@@ -98,6 +98,20 @@ contract NFCCardNFT is ERC721, ERC721Burnable, Ownable, ReentrancyGuard {
         bool frozen
     );
 
+    event CardTransferred(
+        uint256 indexed tokenId,
+        string indexed nfcUID,
+        address indexed fromOwner,
+        address indexed toOwner
+    );
+
+    event CardsInteracted(
+        uint256 indexed tokenId1,
+        uint256 indexed tokenId2,
+        address indexed initiator,
+        string interactionType
+    );
+
     event BattleResult(
         uint256 indexed tokenId,
         bool won,
@@ -171,6 +185,62 @@ contract NFCCardNFT is ERC721, ERC721Burnable, Ownable, ReentrancyGuard {
     }
 
     /**
+     * @dev 解绑并转移NFC卡片NFT所有权
+     * @param nfcUID NFC卡片UID
+     * @param newOwner 新的所有者地址
+     * @param ownerSignature 拥有者签名 (用于验证授权)
+     */
+    function unbindAndTransferCard(
+        string memory nfcUID,
+        address newOwner,
+        bytes memory ownerSignature
+    ) external nonReentrant {
+        require(newOwner != address(0), "Invalid new owner address");
+
+        uint256 tokenId = nfcToTokenId[nfcUID];
+        require(tokenId != 0, "NFC not found");
+        require(_ownerOf(tokenId) != address(0), "Card already burned");
+
+        CardNFT storage card = cardNFTs[tokenId];
+        address cardOwner = ownerOf(tokenId);
+
+        // 验证调用者必须是卡片所有者
+        require(msg.sender == cardOwner, "Only card owner can transfer");
+
+        // 验证签名 (确保是私钥所有者授权)
+        require(
+            _verifyOwnerSignature(
+                cardOwner,
+                nfcUID,
+                "transfer",
+                ownerSignature
+            ),
+            "Invalid signature"
+        );
+
+        // 清除NFC映射关系 (解绑)
+        delete nfcToTokenId[nfcUID];
+
+        // 更新卡片状态为非激活
+        card.isActive = false;
+        card.boundWallet = address(0);
+
+        // 转移NFT所有权
+        _transfer(cardOwner, newOwner, tokenId);
+
+        // 记录所有权变更
+        _recordOwnershipChange(
+            tokenId,
+            cardOwner,
+            newOwner,
+            "transfer_after_unbind"
+        );
+
+        emit CardUnbound(tokenId, nfcUID, cardOwner, false);
+        emit CardTransferred(tokenId, nfcUID, cardOwner, newOwner);
+    }
+
+    /**
      * @dev 解绑并销毁NFC卡片NFT
      * @param nfcUID NFC卡片UID
      * @param ownerSignature 拥有者签名 (用于验证授权)
@@ -186,22 +256,25 @@ contract NFCCardNFT is ERC721, ERC721Burnable, Ownable, ReentrancyGuard {
         CardNFT storage card = cardNFTs[tokenId];
         address cardOwner = ownerOf(tokenId);
 
-        // 验证调用者权限 (可以是拥有者或授权的操作者)
-        require(
-            msg.sender == cardOwner ||
-                msg.sender == owner() ||
-                _isAuthorizedMinter(msg.sender),
-            "Unauthorized to unbind"
-        );
+        // 验证调用者必须是卡片所有者
+        require(msg.sender == cardOwner, "Only card owner can burn");
 
-        // TODO: 验证签名 (实际部署时应该验证ownerSignature)
-        // require(_verifyOwnerSignature(cardOwner, nfcUID, ownerSignature), "Invalid signature");
+        // 验证签名 (确保是私钥所有者授权)
+        require(
+            _verifyOwnerSignature(cardOwner, nfcUID, "burn", ownerSignature),
+            "Invalid signature"
+        );
 
         // 从拥有者的卡片列表中移除
         _removeCardFromWallet(cardOwner, tokenId);
 
         // 记录所有权结束
-        _recordOwnershipChange(tokenId, cardOwner, address(0), "unbind");
+        _recordOwnershipChange(
+            tokenId,
+            cardOwner,
+            address(0),
+            "burn_after_unbind"
+        );
 
         // 清除映射关系
         delete nfcToTokenId[nfcUID];
@@ -210,6 +283,130 @@ contract NFCCardNFT is ERC721, ERC721Burnable, Ownable, ReentrancyGuard {
 
         // 销毁NFT
         _burn(tokenId);
+    }
+
+    /**
+     * @dev 卡片社交交互功能
+     * @param myNfcUID 我的NFC卡片UID
+     * @param targetNfcUID 目标NFC卡片UID
+     * @param interactionType 交互类型 ("battle", "trade", "social")
+     */
+    function interactWithCard(
+        string memory myNfcUID,
+        string memory targetNfcUID,
+        string memory interactionType
+    ) external nonReentrant {
+        uint256 myTokenId = nfcToTokenId[myNfcUID];
+        uint256 targetTokenId = nfcToTokenId[targetNfcUID];
+
+        require(myTokenId != 0, "My NFC not found");
+        require(targetTokenId != 0, "Target NFC not found");
+        require(myTokenId != targetTokenId, "Cannot interact with same card");
+
+        CardNFT storage myCard = cardNFTs[myTokenId];
+        CardNFT storage targetCard = cardNFTs[targetTokenId];
+
+        // 验证我的卡片所有权
+        require(ownerOf(myTokenId) == msg.sender, "Not owner of my card");
+
+        // 验证两张卡片都是激活状态
+        require(myCard.isActive, "My card is not active");
+        require(targetCard.isActive, "Target card is not active");
+
+        // 根据交互类型执行不同逻辑
+        if (keccak256(bytes(interactionType)) == keccak256(bytes("battle"))) {
+            _handleBattleInteraction(myTokenId, targetTokenId);
+        } else if (
+            keccak256(bytes(interactionType)) == keccak256(bytes("social"))
+        ) {
+            _handleSocialInteraction(myTokenId, targetTokenId);
+        }
+
+        emit CardsInteracted(
+            myTokenId,
+            targetTokenId,
+            msg.sender,
+            interactionType
+        );
+    }
+
+    /**
+     * @dev 处理对战交互
+     */
+    function _handleBattleInteraction(
+        uint256 myTokenId,
+        uint256 targetTokenId
+    ) internal {
+        CardNFT storage myCard = cardNFTs[myTokenId];
+        CardNFT storage targetCard = cardNFTs[targetTokenId];
+
+        // 增加对战次数
+        myCard.battleCount++;
+        targetCard.battleCount++;
+
+        // 简单的对战逻辑 (基于等级和随机数)
+        uint256 randomSeed = uint256(
+            keccak256(
+                abi.encodePacked(
+                    block.timestamp,
+                    block.prevrandao,
+                    myTokenId,
+                    targetTokenId
+                )
+            )
+        );
+
+        bool myCardWins = (myCard.level + (randomSeed % 10)) >
+            (targetCard.level + ((randomSeed >> 8) % 10));
+
+        if (myCardWins) {
+            myCard.winCount++;
+            myCard.experience += 10;
+            targetCard.experience += 3; // 失败者也获得少量经验
+        } else {
+            targetCard.winCount++;
+            targetCard.experience += 10;
+            myCard.experience += 3;
+        }
+
+        // 检查是否可以升级
+        _checkLevelUp(myTokenId);
+        _checkLevelUp(targetTokenId);
+    }
+
+    /**
+     * @dev 处理社交交互
+     */
+    function _handleSocialInteraction(
+        uint256 myTokenId,
+        uint256 targetTokenId
+    ) internal {
+        CardNFT storage myCard = cardNFTs[myTokenId];
+        CardNFT storage targetCard = cardNFTs[targetTokenId];
+
+        // 社交交互给予少量经验值
+        myCard.experience += 1;
+        targetCard.experience += 1;
+
+        // 检查是否可以升级
+        _checkLevelUp(myTokenId);
+        _checkLevelUp(targetTokenId);
+    }
+
+    /**
+     * @dev 检查并处理卡片升级
+     */
+    function _checkLevelUp(uint256 tokenId) internal {
+        CardNFT storage card = cardNFTs[tokenId];
+        uint256 requiredExp = (card.level + 1) * 100; // 每级需要更多经验
+
+        if (card.experience >= requiredExp) {
+            uint256 oldLevel = card.level;
+            card.level++;
+            card.experience -= requiredExp; // 扣除升级所需经验
+
+            emit CardLevelUp(tokenId, oldLevel, card.level);
+        }
     }
 
     /**
@@ -497,6 +694,68 @@ contract NFCCardNFT is ERC721, ERC721Burnable, Ownable, ReentrancyGuard {
         return
             authorizedMinters[Strings.toHexString(uint160(minter), 20)] ||
             minter == owner();
+    }
+
+    /**
+     * @dev 验证所有者签名
+     * @param owner 卡片所有者地址
+     * @param nfcUID NFC卡片UID
+     * @param action 操作类型 ("transfer" 或 "burn")
+     * @param signature 签名数据
+     * @return 签名是否有效
+     */
+    function _verifyOwnerSignature(
+        address owner,
+        string memory nfcUID,
+        string memory action,
+        bytes memory signature
+    ) internal view returns (bool) {
+        // 构造签名消息
+        bytes32 messageHash = keccak256(
+            abi.encodePacked(
+                "\x19Ethereum Signed Message:\n",
+                "32",
+                keccak256(
+                    abi.encodePacked(owner, nfcUID, action, block.chainid)
+                )
+            )
+        );
+
+        // 恢复签名者地址
+        address signer = _recoverSigner(messageHash, signature);
+
+        return signer == owner;
+    }
+
+    /**
+     * @dev 从签名中恢复签名者地址
+     * @param messageHash 消息哈希
+     * @param signature 签名数据
+     * @return 签名者地址
+     */
+    function _recoverSigner(
+        bytes32 messageHash,
+        bytes memory signature
+    ) internal pure returns (address) {
+        require(signature.length == 65, "Invalid signature length");
+
+        bytes32 r;
+        bytes32 s;
+        uint8 v;
+
+        assembly {
+            r := mload(add(signature, 32))
+            s := mload(add(signature, 64))
+            v := byte(0, mload(add(signature, 96)))
+        }
+
+        if (v < 27) {
+            v += 27;
+        }
+
+        require(v == 27 || v == 28, "Invalid signature v value");
+
+        return ecrecover(messageHash, v, r, s);
     }
 
     /**

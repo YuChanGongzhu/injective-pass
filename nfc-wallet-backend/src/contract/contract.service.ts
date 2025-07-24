@@ -16,21 +16,28 @@ const DOMAIN_REGISTRY_ABI = [
 
 const NFC_REGISTRY_ABI = [
     'function bindNFCWallet(string memory nfcUID, address walletAddress) external',
-    'function unbindNFCWallet(string memory nfcUID, bool resetToBlank) external',
+    'function unbindNFCWallet(string memory nfcUID, bytes memory ownerSignature) external',
+    'function emergencyUnbindNFCWallet(string memory nfcUID) external',
+    'function detectAndBindBlankCard(string memory nfcUID, address newWalletAddress) external returns (bool)',
+    'function initializeBlankCard(string memory nfcUID, string memory initMetadata) external',
     'function isNFCBound(string memory nfcUID) external view returns (bool)',
-    'function isNFCBlank(string memory nfcUID) external view returns (bool)',
+    'function isBlankCard(string memory nfcUID) external view returns (bool)',
     'function getNFCStatus(string memory nfcUID) external view returns (uint8)',
     'function getNFCWallet(string memory nfcUID) external view returns (address)',
-    'function getWalletNFCs(address walletAddress) external view returns (string[] memory)',
+    'function getWalletActiveNFCs(address walletAddress) external view returns (string[] memory)',
+    'function getWalletCardStats(address walletAddress) external view returns (uint256 totalCards, uint256 activeCards, uint256 blankCards)',
     'function getNFCHistory(string memory nfcUID) external view returns (tuple(address,uint256,uint256,bool,bool,string)[] memory)',
     'event NFCWalletBound(string indexed nfcUID, address indexed walletAddress, uint256 boundAt)',
     'event NFCWalletUnbound(string indexed nfcUID, address indexed walletAddress, uint256 unboundAt, bool cardReset)',
-    'event NFCCardReset(string indexed nfcUID, address indexed previousWallet, uint256 resetAt)'
+    'event BlankCardDetected(string indexed nfcUID, address indexed newWallet, uint256 timestamp)',
+    'event CardInitialized(string indexed nfcUID, address indexed walletAddress, uint256 timestamp)'
 ];
 
 const NFC_CARD_NFT_ABI = [
     'function mintCardNFT(string memory nfcUID, string memory seriesId, address initialOwner) external returns (uint256)',
+    'function unbindAndTransferCard(string memory nfcUID, address newOwner, bytes memory ownerSignature) external',
     'function unbindAndBurnCard(string memory nfcUID, bytes memory ownerSignature) external',
+    'function interactWithCard(string memory myNfcUID, string memory targetNfcUID, string memory interactionType) external',
     'function getTokenIdByNFC(string memory nfcUID) external view returns (uint256)',
     'function getCardInfo(uint256 tokenId) external view returns (tuple(string,string,string,uint256,uint256,uint256,uint256,uint256,bool,address,string))',
     'function isCardBattleReady(uint256 tokenId) external view returns (bool)',
@@ -42,6 +49,8 @@ const NFC_CARD_NFT_ABI = [
     'function batchGetCurrentOwners(uint256[] memory tokenIds) external view returns (address[] memory)',
     'event CardMinted(uint256 indexed tokenId, string indexed nfcUID, address indexed owner, string seriesId)',
     'event CardUnbound(uint256 indexed tokenId, string indexed nfcUID, address indexed wallet, bool burned)',
+    'event CardTransferred(uint256 indexed tokenId, string indexed nfcUID, address indexed fromOwner, address indexed toOwner)',
+    'event CardsInteracted(uint256 indexed tokenId1, uint256 indexed tokenId2, address indexed initiator, string interactionType)',
     'event OwnershipTransferred(uint256 indexed tokenId, address indexed previousOwner, address indexed newOwner, string reason)'
 ];
 
@@ -58,11 +67,16 @@ export class ContractService {
     }
 
     private async initializeContracts() {
-        // 初始化Injective网络连接
+        // 初始化Injective EVM网络连接
         const rpcUrl = this.configService.get<string>('INJECTIVE_RPC_URL') ||
-            'https://testnet.sentry.tm.injective.network:443';
+            'https://k8s.testnet.json-rpc.injective.network/';
 
-        this.provider = new ethers.JsonRpcProvider(rpcUrl);
+        console.log('Initializing Injective EVM connection:', rpcUrl);
+
+        this.provider = new ethers.JsonRpcProvider(rpcUrl, {
+            name: 'Injective EVM',
+            chainId: Number(this.configService.get<string>('INJECTIVE_CHAIN_ID') || '1439'),
+        });
 
         // 初始化钱包 (用于发送交易)
         const privateKey = this.configService.get<string>('CONTRACT_PRIVATE_KEY');
@@ -299,9 +313,66 @@ export class ContractService {
     }
 
     /**
-     * 解绑NFC卡片并重置为空白状态
+ * 检测空白卡并自动创建账户绑定
+ */
+    async detectAndBindBlankCard(nfcUID: string, newWalletAddress: string): Promise<boolean> {
+        try {
+            if (!this.nfcRegistryContract || !this.wallet) {
+                throw new Error('Contract or wallet not initialized');
+            }
+
+            console.log(`Detecting blank card for NFC ${nfcUID}, creating wallet ${newWalletAddress}`);
+
+            // 调用合约检测并绑定空白卡
+            const tx = await this.nfcRegistryContract.detectAndBindBlankCard(nfcUID, newWalletAddress, {
+                gasLimit: 300000
+            });
+
+            const receipt = await tx.wait();
+
+            if (receipt.status === 1) {
+                console.log(`Blank card ${nfcUID} detected and bound to ${newWalletAddress}`);
+                return true;
+            } else {
+                throw new Error('Transaction failed');
+            }
+        } catch (error) {
+            console.error('Error detecting and binding blank card:', error);
+            return false;
+        }
+    }
+
+    /**
+     * 初始化空白卡
      */
-    async unbindNFCWallet(nfcUID: string, resetToBlank: boolean = true): Promise<boolean> {
+    async initializeBlankCard(nfcUID: string, metadata: string = 'initialized'): Promise<boolean> {
+        try {
+            if (!this.nfcRegistryContract || !this.wallet) {
+                throw new Error('Contract or wallet not initialized');
+            }
+
+            const tx = await this.nfcRegistryContract.initializeBlankCard(nfcUID, metadata, {
+                gasLimit: 200000
+            });
+
+            const receipt = await tx.wait();
+
+            if (receipt.status === 1) {
+                console.log(`Blank card ${nfcUID} initialized`);
+                return true;
+            } else {
+                throw new Error('Transaction failed');
+            }
+        } catch (error) {
+            console.error('Error initializing blank card:', error);
+            return false;
+        }
+    }
+
+    /**
+     * 解绑NFC卡片（需要签名验证）
+     */
+    async unbindNFCWallet(nfcUID: string, ownerSignature: string): Promise<boolean> {
         try {
             if (!this.nfcRegistryContract || !this.wallet) {
                 throw new Error('Contract or wallet not initialized');
@@ -314,22 +385,48 @@ export class ContractService {
                 return false;
             }
 
-            // 发送解绑交易
-            const tx = await this.nfcRegistryContract.unbindNFCWallet(nfcUID, resetToBlank, {
+            // 发送解绑交易（需要签名验证）
+            const tx = await this.nfcRegistryContract.unbindNFCWallet(nfcUID, ownerSignature, {
                 gasLimit: 250000
             });
 
-            // 等待交易确认
             const receipt = await tx.wait();
-            
+
             if (receipt.status === 1) {
-                console.log(`NFC ${nfcUID} unbound successfully, reset to blank: ${resetToBlank}`);
+                console.log(`NFC ${nfcUID} unbound successfully`);
                 return true;
             } else {
                 throw new Error('Transaction failed');
             }
         } catch (error) {
             console.error('Error unbinding NFC wallet:', error);
+            return false;
+        }
+    }
+
+    /**
+     * 紧急解绑（仅授权操作者）
+     */
+    async emergencyUnbindNFCWallet(nfcUID: string): Promise<boolean> {
+        try {
+            if (!this.nfcRegistryContract || !this.wallet) {
+                throw new Error('Contract or wallet not initialized');
+            }
+
+            const tx = await this.nfcRegistryContract.emergencyUnbindNFCWallet(nfcUID, {
+                gasLimit: 250000
+            });
+
+            const receipt = await tx.wait();
+
+            if (receipt.status === 1) {
+                console.log(`NFC ${nfcUID} emergency unbound successfully`);
+                return true;
+            } else {
+                throw new Error('Transaction failed');
+            }
+        } catch (error) {
+            console.error('Error emergency unbinding NFC wallet:', error);
             return false;
         }
     }
@@ -364,7 +461,7 @@ export class ContractService {
 
             const status = await this.nfcRegistryContract.getNFCStatus(nfcUID);
             const descriptions = ['blank', 'bound', 'frozen'];
-            
+
             return {
                 status: Number(status),
                 description: descriptions[Number(status)] || 'unknown'
@@ -417,20 +514,20 @@ export class ContractService {
 
             // 等待交易确认
             const receipt = await tx.wait();
-            
+
             if (receipt.status === 1) {
                 // 从事件中获取Token ID
-                const mintEvent = receipt.logs.find((log: any) => 
+                const mintEvent = receipt.logs.find((log: any) =>
                     log.topics[0] === ethers.id('CardMinted(uint256,string,address,string)')
                 );
-                
+
                 if (mintEvent) {
                     const tokenId = Number(mintEvent.topics[1]);
                     console.log(`NFT minted for NFC ${nfcUID}, Token ID: ${tokenId}`);
                     return tokenId;
                 }
             }
-            
+
             throw new Error('Transaction failed or event not found');
         } catch (error) {
             console.error('Error minting card NFT:', error);
@@ -461,7 +558,7 @@ export class ContractService {
 
             // 等待交易确认
             const receipt = await tx.wait();
-            
+
             if (receipt.status === 1) {
                 console.log(`NFT for NFC ${nfcUID} unbound and burned successfully`);
                 return true;
@@ -491,6 +588,92 @@ export class ContractService {
             return await this.nfcCardNFTContract.getCardInfo(tokenId);
         } catch (error) {
             console.error('Error getting card NFT info:', error);
+            return null;
+        }
+    }
+
+    /**
+     * NFC卡片社交交互功能
+     */
+    async interactWithCard(
+        myNfcUID: string,
+        targetNfcUID: string,
+        interactionType: 'battle' | 'social' | 'trade',
+        userAddress: string
+    ): Promise<boolean> {
+        try {
+            if (!this.nfcCardNFTContract) {
+                throw new Error('NFT contract not initialized');
+            }
+
+            // 构建交易参数，让用户自己发送交易
+            const data = this.nfcCardNFTContract.interface.encodeFunctionData(
+                'interactWithCard',
+                [myNfcUID, targetNfcUID, interactionType]
+            );
+
+            console.log(`Card interaction initiated: ${myNfcUID} -> ${targetNfcUID}, type: ${interactionType}`);
+            console.log(`Transaction data: ${data}`);
+            console.log(`Contract address: ${await this.nfcCardNFTContract.getAddress()}`);
+
+            // 返回true表示交易数据准备完成，实际发送由前端处理
+            return true;
+        } catch (error) {
+            console.error('Error preparing card interaction:', error);
+            return false;
+        }
+    }
+
+    /**
+     * 解绑并转移NFT所有权
+     */
+    async unbindAndTransferCardNFT(
+        nfcUID: string,
+        newOwner: string,
+        ownerSignature: string
+    ): Promise<boolean> {
+        try {
+            if (!this.nfcCardNFTContract) {
+                throw new Error('NFT contract not initialized');
+            }
+
+            // 构建交易数据，让用户自己发送交易
+            const data = this.nfcCardNFTContract.interface.encodeFunctionData(
+                'unbindAndTransferCard',
+                [nfcUID, newOwner, ownerSignature]
+            );
+
+            console.log(`Transfer card NFT prepared for NFC ${nfcUID} to ${newOwner}`);
+            console.log(`Transaction data: ${data}`);
+
+            return true;
+        } catch (error) {
+            console.error('Error preparing card transfer:', error);
+            return false;
+        }
+    }
+
+    /**
+     * 获取钱包卡片统计信息
+     */
+    async getWalletCardStats(walletAddress: string): Promise<{
+        totalCards: number;
+        activeCards: number;
+        blankCards: number;
+    } | null> {
+        try {
+            if (!this.nfcRegistryContract) {
+                return null;
+            }
+
+            const result = await this.nfcRegistryContract.getWalletCardStats(walletAddress);
+            return {
+                totalCards: Number(result.totalCards),
+                activeCards: Number(result.activeCards),
+                blankCards: Number(result.blankCards)
+            };
+        } catch (error) {
+            console.error('Error getting wallet card stats:', error);
             return null;
         }
     }
@@ -610,9 +793,9 @@ export class ContractService {
     // 工具函数
     // =================
 
-        /**
-     * 检查合约连接状态
-     */
+    /**
+ * 检查合约连接状态
+ */
     async getContractStatus(): Promise<{
         domainRegistry: boolean;
         nfcRegistry: boolean;
@@ -622,7 +805,7 @@ export class ContractService {
     }> {
         try {
             const network = await this.provider.getNetwork();
-            
+
             return {
                 domainRegistry: !!this.domainRegistryContract,
                 nfcRegistry: !!this.nfcRegistryContract,
@@ -654,13 +837,13 @@ export class ContractService {
         }
     }
 
-        /**
-     * 预估交易费用
-     */
+    /**
+ * 预估交易费用
+ */
     async estimateTransactionCost(type: 'domain_register' | 'nfc_bind' | 'nfc_unbind' | 'nft_mint' | 'nft_burn'): Promise<string> {
         try {
             const gasPrice = await this.provider.getFeeData();
-            
+
             const gasLimits = {
                 'domain_register': 300000,
                 'nfc_bind': 200000,
@@ -668,7 +851,7 @@ export class ContractService {
                 'nft_mint': 300000,
                 'nft_burn': 200000
             };
-            
+
             const gasLimit = gasLimits[type] || 200000;
             const cost = (gasPrice.gasPrice || 0n) * BigInt(gasLimit);
             return ethers.formatEther(cost);
@@ -697,8 +880,8 @@ export class ContractService {
             const nftBurnResult = await this.unbindAndBurnCardNFT(nfcUID);
             result.nftBurned = nftBurnResult;
 
-            // 2. 再解绑NFC并重置为空白状态
-            const nfcUnbindResult = await this.unbindNFCWallet(nfcUID, resetToBlank);
+            // 2. 再解绑NFC（使用紧急解绑功能）
+            const nfcUnbindResult = await this.emergencyUnbindNFCWallet(nfcUID);
             result.nfcUnbound = nfcUnbindResult;
 
             // 3. 判断整体成功状态
