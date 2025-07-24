@@ -1,0 +1,84 @@
+version: '3.8'
+
+services:
+  # PostgreSQL数据库
+  postgres:
+    image: postgres:15-alpine
+    container_name: nfc_wallet_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nfc_wallet
+      POSTGRES_USER: nfc_user
+      POSTGRES_PASSWORD: secure_password_123
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U nfc_user -d nfc_wallet" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis缓存（可选）
+  redis:
+    image: redis:7-alpine
+    container_name: nfc_wallet_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --requirepass redis_password_123
+    volumes:
+      - redis_data:/data
+
+  # NFC钱包后端API
+  api:
+    build: .
+    container_name: nfc_wallet_api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: "postgresql://nfc_user:secure_password_123@postgres:5432/nfc_wallet?schema=public"
+      AES_ENCRYPTION_KEY: "a1b2c3d4e5f6789012345678901234567890123456789012345678901234567890"
+      JWT_SECRET: "your-super-secret-jwt-key-change-in-production"
+      API_KEY_PREFIX: "nfc_wallet_"
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./logs:/app/logs
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:3000/api/nfc/stats" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Nginx反向代理（生产环境）
+  nginx:
+    image: nginx:alpine
+    container_name: nfc_wallet_nginx
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - nginx_logs:/var/log/nginx
+    environment:
+      - NGINX_ENTRYPOINT_QUIET_LOGS=1
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  nginx_logs:
+    driver: local

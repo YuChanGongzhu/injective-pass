@@ -1,0 +1,35 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model NFCWallet {
+  id            Int      @id @default(autoincrement())
+  uid           String   @unique @db.VarChar(255) // NFC卡片UID
+  address       String   @db.VarChar(63) // Injective地址 (inj...)
+  ethAddress    String?  @db.VarChar(42) // 以太坊格式地址（备用）
+  privateKeyEnc String   @db.Text // 加密的私钥
+  domain        String?  @unique @db.VarChar(70) // .inj域名，可选且唯一
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("nfc_wallets")
+}
+
+model ApiKey {
+  id        Int      @id @default(autoincrement())
+  keyHash   String   @unique // API密钥哈希
+  name      String   @db.VarChar(100) // 密钥名称
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  lastUsed  DateTime?
+
+  @@map("api_keys")
+} 
