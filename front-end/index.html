@@ -3935,7 +3935,7 @@
             try {
                 // 检查是否支持Web NFC API
                 if (!('NDEFReader' in window)) {
-                    statusText.textContent = '您的浏览器不支持NFC功能';
+                    statusText.textContent = '您的浏览器不支持NFC功能，请使用支持Web NFC的浏览器（如Chrome on Android）';
                     console.warn('Web NFC API not supported');
                     return;
                 }
@@ -3945,15 +3945,23 @@
                 // 创建NDEF读取器
                 const ndef = new NDEFReader();
 
+                // 设置扫描超时
+                const scanTimeout = setTimeout(() => {
+                    statusText.textContent = 'NFC扫描超时，请确保NFC卡片靠近设备并重试';
+                    console.warn('NFC scan timeout');
+                }, 20000); // 20秒超时
+
                 // 监听NFC标签读取事件
                 ndef.addEventListener('reading', (event) => {
+                    clearTimeout(scanTimeout);
                     console.log('NFC tag detected:', event);
 
-                    // 获取UID
-                    const uid = event.serialNumber;
+                    // 获取UID (优先使用serialNumber，否则生成唯一ID)
+                    const uid = event.serialNumber || `nfc-${Date.now()}-${Math.random().toString(36).substr(2, 8)}`;
                     appState.nfcUid = uid;
 
                     statusText.textContent = '扫描成功！正在处理...';
+                    console.log('NFC UID obtained:', uid);
 
                     // 延迟跳转到域名创建页面
                     setTimeout(() => {
@@ -3963,26 +3971,28 @@
 
                 // 监听读取错误
                 ndef.addEventListener('readingerror', (error) => {
+                    clearTimeout(scanTimeout);
                     console.error('NFC reading error:', error);
-                    statusText.textContent = '读取失败，请重试';
+                    statusText.textContent = 'NFC读取失败，请检查NFC卡片是否正常并重试';
                 });
 
                 // 开始扫描
                 await ndef.scan();
-                statusText.textContent = '请将NFC卡片靠近手机...';
+                statusText.textContent = '请将NFC卡片靠近设备...';
+                console.log('NFC scan started successfully');
 
             } catch (error) {
                 console.error('NFC扫描失败:', error);
 
                 // 提供更友好的错误信息
                 if (error.name === 'NotAllowedError') {
-                    statusText.textContent = '需要NFC权限，请允许访问';
+                    statusText.textContent = '需要NFC权限，请在浏览器中允许NFC访问';
                 } else if (error.name === 'NotSupportedError') {
-                    statusText.textContent = '设备不支持NFC功能';
+                    statusText.textContent = '您的设备不支持NFC功能';
                 } else if (error.name === 'NotReadableError') {
-                    statusText.textContent = '无法读取NFC卡片';
+                    statusText.textContent = '无法读取NFC卡片，请重试';
                 } else {
-                    statusText.textContent = '扫描失败，请重试';
+                    statusText.textContent = 'NFC扫描失败：' + error.message;
                 }
             }
         }
@@ -3992,21 +4002,33 @@
             const statusText = document.getElementById('nfc-status-text');
 
             try {
-                statusText.textContent = '正在扫描...';
+                statusText.textContent = '正在模拟扫描...';
+                console.log('Starting simulation NFC scan');
 
-                // 模拟NFC扫描过程
-                await new Promise(resolve => setTimeout(resolve, 2000));
+                // 模拟NFC扫描过程（稍微长一点让用户感觉真实）
+                await new Promise(resolve => setTimeout(resolve, 2500));
+
+                // 生成符合格式的模拟UID
+                const mockUid = `04:f3:a1:8a:b2:5d:80:${Math.random().toString(16).substr(2, 8)}`;
+                appState.nfcUid = mockUid;
+
+                console.log('Mock NFC UID generated:', mockUid);
 
                 // 模拟扫描成功
-                statusText.textContent = '扫描成功！正在处理...';
+                statusText.textContent = '模拟扫描成功！正在处理...';
                 await new Promise(resolve => setTimeout(resolve, 1000));
 
                 // 跳转到域名创建页面
                 navigateTo('minting-screen');
 
             } catch (error) {
-                console.error('NFC扫描失败:', error);
-                statusText.textContent = '扫描失败，请重试';
+                console.error('模拟NFC扫描失败:', error);
+                statusText.textContent = '模拟扫描失败，请重试';
+
+                // 提供重试选项
+                setTimeout(() => {
+                    statusText.textContent = '点击重试按钮再次尝试';
+                }, 2000);
             }
         }
 
@@ -4037,19 +4059,70 @@
                 }
             },
 
-            // 读取NFC UID（模拟方法，因为Web端无法直接读取NFC）
+            // 读取NFC UID（真实Web NFC API实现）
             readNfcUid: async () => {
                 // 如果已经有NFC UID，直接返回
                 if (appState.nfcUid) {
                     return appState.nfcUid;
                 }
 
-                // 生成模拟的 UID 用于测试
-                const mockUid = `04:f3:a1:8a:b2:5d:80:${Math.random().toString(16).substr(2, 8)}`;
-                console.log('Generated mock NFC UID:', mockUid);
-                return new Promise(resolve =>
-                    setTimeout(() => resolve(mockUid), 1500)
-                );
+                return new Promise(async (resolve, reject) => {
+                    try {
+                        // 检查是否支持Web NFC API
+                        if (!('NDEFReader' in window)) {
+                            reject(new Error('您的浏览器不支持NFC功能，请使用支持Web NFC的浏览器（如Chrome on Android）'));
+                            return;
+                        }
+
+                        console.log('Starting NFC scan...');
+
+                        // 创建NDEF读取器
+                        const ndef = new NDEFReader();
+
+                        // 设置超时
+                        const timeout = setTimeout(() => {
+                            reject(new Error('NFC扫描超时，请确保NFC卡片靠近设备并重试'));
+                        }, 15000); // 15秒超时
+
+                        // 监听NFC标签读取事件
+                        ndef.addEventListener('reading', (event) => {
+                            clearTimeout(timeout);
+                            console.log('NFC tag detected:', event);
+
+                            // 获取UID (使用serialNumber)
+                            const uid = event.serialNumber || `nfc:${Date.now()}`;
+                            appState.nfcUid = uid;
+
+                            console.log('NFC UID read:', uid);
+                            resolve(uid);
+                        });
+
+                        // 监听读取错误
+                        ndef.addEventListener('readingerror', (error) => {
+                            clearTimeout(timeout);
+                            console.error('NFC reading error:', error);
+                            reject(new Error('NFC读取失败，请检查NFC卡片是否正常并重试'));
+                        });
+
+                        // 开始扫描
+                        await ndef.scan();
+                        console.log('NFC scan started, waiting for tag...');
+
+                    } catch (error) {
+                        console.error('NFC scan failed:', error);
+
+                        // 提供具体的错误信息
+                        if (error.name === 'NotAllowedError') {
+                            reject(new Error('需要NFC权限，请在浏览器中允许NFC访问'));
+                        } else if (error.name === 'NotSupportedError') {
+                            reject(new Error('您的设备不支持NFC功能'));
+                        } else if (error.name === 'NotReadableError') {
+                            reject(new Error('无法读取NFC卡片，请重试'));
+                        } else {
+                            reject(new Error('NFC扫描失败：' + error.message));
+                        }
+                    }
+                });
             },
 
             // 根据 UID 获取钱包信息
