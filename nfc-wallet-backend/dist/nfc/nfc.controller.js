@@ -40,7 +40,7 @@ let NFCController = class NFCController {
         return this.nfcService.createDomain(body.uid, body.domainName);
     }
     async unbindNFC(unbindNFCDto) {
-        return this.nfcService.unbindNFC(unbindNFCDto);
+        return this.nfcService.unbindNFC(unbindNFCDto.uid);
     }
     async getWalletStats() {
         return this.nfcService.getWalletStats();

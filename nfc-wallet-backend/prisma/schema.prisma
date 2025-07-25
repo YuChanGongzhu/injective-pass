@@ -10,12 +10,12 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model NFCWallet {
+// 用户钱包表 - 一个用户一个钱包
+model User {
   id            Int      @id @default(autoincrement())
-  uid           String   @unique @db.VarChar(255) // NFC卡片UID
-  address       String   @db.VarChar(63) // Injective地址 (inj...)
-  ethAddress    String?  @db.VarChar(42) // 以太坊格式地址（备用）
-  publicKey     String   @db.Text // 公钥 (base64格式)
+  address       String   @unique @db.VarChar(63) // Injective地址 (inj...)
+  ethAddress    String   @unique @db.VarChar(42) // 以太坊格式地址
+  publicKey     String   @unique @db.Text // 公钥 (base64格式)
   privateKeyEnc String   @db.Text // 加密的私钥
   domain        String?  @unique @db.VarChar(70) // .inj域名，可选且唯一
   nftTokenId    String?  @db.VarChar(100) // NFT代币ID（如果铸造了NFT）
@@ -23,7 +23,74 @@ model NFCWallet {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  @@map("nfc_wallets")
+  // 一个用户可以关联多个NFC卡片
+  nfcCards      NFCCard[]
+  
+  // 用户的交易记录
+  transactions  Transaction[]
+
+  @@map("users")
+}
+
+// NFC卡片表 - 多个NFC卡片可以属于一个用户
+model NFCCard {
+  id        Int      @id @default(autoincrement())
+  uid       String   @unique @db.VarChar(255) // NFC卡片UID
+  userId    Int      // 关联的用户ID
+  nickname  String?  @db.VarChar(100) // 卡片昵称（可选）
+  isActive  Boolean  @default(true) // 卡片是否激活
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 关联到用户
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("nfc_cards")
+}
+
+// 交易记录表 - 记录所有区块链交易
+model Transaction {
+  id            Int             @id @default(autoincrement())
+  txHash        String          @unique @db.VarChar(66) // 交易哈希
+  userId        Int             // 关联的用户ID
+  type          TransactionType // 交易类型
+  amount        String?         @db.VarChar(50) // 交易金额（字符串格式保存精度）
+  tokenSymbol   String?         @db.VarChar(20) // 代币符号 (INJ, USDT等)
+  fromAddress   String?         @db.VarChar(63) // 发送方地址
+  toAddress     String?         @db.VarChar(63) // 接收方地址
+  status        TxStatus        @default(PENDING) // 交易状态
+  blockHeight   String?         @db.VarChar(20) // 区块高度
+  gasUsed       String?         @db.VarChar(20) // 消耗的gas
+  fee           String?         @db.VarChar(20) // 交易手续费
+  memo          String?         @db.Text // 交易备注
+  rawTx         Json?           // 原始交易数据
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  // 关联到用户
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("transactions")
+}
+
+// 交易类型枚举
+enum TransactionType {
+  SEND          // 发送代币
+  RECEIVE       // 接收代币
+  INITIAL_FUND  // 初始资金
+  NFT_MINT      // NFT铸造
+  DOMAIN_REG    // 域名注册
+  SWAP          // 代币交换
+  STAKE         // 质押
+  UNSTAKE       // 取消质押
+}
+
+// 交易状态枚举
+enum TxStatus {
+  PENDING       // 待确认
+  CONFIRMED     // 已确认
+  FAILED        // 失败
+  CANCELLED     // 已取消
 }
 
 model ApiKey {

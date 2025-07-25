@@ -12,9 +12,10 @@ import {
     getEthereumAddress,
     BaseAccount,
     DEFAULT_STD_FEE,
-    SIGN_AMINO
+    SIGN_AMINO,
+    MsgBroadcasterWithPk
 } from '@injectivelabs/sdk-ts';
-import { BigNumberInWei } from '@injectivelabs/utils';
+import { BigNumberInWei, BigNumberInBase } from '@injectivelabs/utils';
 import { Network, getNetworkEndpoints } from '@injectivelabs/networks';
 
 @Injectable()
@@ -29,6 +30,15 @@ export class InjectiveService {
             ? Network.Mainnet
             : Network.TestnetSentry;
         this.endpoints = getNetworkEndpoints(this.network);
+    }
+
+    /**
+     * 获取正确的Chain ID
+     */
+    private getChainId(): string {
+        // Injective Testnet 的正确 chain-id 是 'injective-888'
+        // Mainnet 的 chain-id 是 'injective-1'
+        return this.network === Network.Mainnet ? 'injective-1' : 'injective-888';
     }
 
     /**
@@ -123,6 +133,24 @@ export class InjectiveService {
         try {
             console.log(`发送初始资金: ${amount} INJ to ${recipientAddress}`);
 
+            // 检查主账户余额
+            const masterPrivateKey = PrivateKey.fromPrivateKey(this.masterPrivateKey);
+            const masterAddress = masterPrivateKey.toPublicKey().toAddress().toBech32();
+            console.log(`主账户地址: ${masterAddress}`);
+
+            try {
+                const balance = await this.getAccountBalance(masterAddress);
+                console.log(`主账户余额: ${balance.inj} INJ`);
+
+                if (parseFloat(balance.inj) < parseFloat(amount)) {
+                    const error = `主账户余额不足: ${balance.inj} INJ < ${amount} INJ. 请向主账户 ${masterAddress} 发送测试网INJ代币`;
+                    console.error(error);
+                    return { success: false, error };
+                }
+            } catch (balanceError) {
+                console.warn(`无法获取主账户余额: ${balanceError.message}, 继续尝试发送交易...`);
+            }
+
             // 使用主账户发送资金
             const result = await this.sendInjectiveTokens(
                 recipientAddress,
@@ -147,7 +175,7 @@ export class InjectiveService {
     }
 
     /**
-     * 发送INJ代币到指定地址
+     * 发送INJ代币到指定地址（使用MsgBroadcasterWithPk简化流程）
      */
     async sendInjectiveTokens(
         toAddress: string,
@@ -162,57 +190,46 @@ export class InjectiveService {
 
             console.log(`Sending ${amount} INJ to ${toAddress}`);
 
-            // 初始化私钥
-            const privateKeyObj = PrivateKey.fromPrivateKey(privateKey);
-            const publicKey = privateKeyObj.toPublicKey();
-            const senderAddress = publicKey.toAddress().toBech32();
+            // 确保私钥格式正确（需要0x前缀）
+            const formattedPrivateKey = privateKey.startsWith('0x') ? privateKey : `0x${privateKey}`;
+
+            // 获取发送方地址
+            const privateKeyObj = PrivateKey.fromPrivateKey(formattedPrivateKey);
+            const senderAddress = privateKeyObj.toPublicKey().toAddress().toBech32();
+
+            console.log(`发送方地址: ${senderAddress}`);
 
             // 确保接收地址是Injective格式
             const recipientAddress = toAddress.startsWith('inj')
                 ? toAddress
                 : getInjectiveAddress(toAddress);
 
-            // 初始化API客户端
-            const chainRestAuthApi = new ChainRestAuthApi(this.endpoints.rest);
-            const txRestApi = new TxRestApi(this.endpoints.rest);
+            // 准备金额（转换为Wei格式）
+            const amountInWei = new BigNumberInBase(amount).toWei().toFixed();
+            console.log(`转换后的金额: ${amountInWei} wei`);
 
-            // 获取账户信息
-            const accountDetailsResponse = await chainRestAuthApi.fetchAccount(senderAddress);
-            const baseAccount = BaseAccount.fromRestApi(accountDetailsResponse);
-
-            // 创建发送消息
-            const amount_wei = new BigNumberInWei(amount).toFixed();
-
+            // 创建MsgSend消息
             const msg = MsgSend.fromJSON({
                 amount: {
-                    amount: amount_wei,
+                    amount: amountInWei,
                     denom: 'inj'
                 },
                 srcInjectiveAddress: senderAddress,
                 dstInjectiveAddress: recipientAddress
             });
 
-            // 创建交易
-            const { txRaw } = createTransaction({
-                message: [msg],
-                memo: 'NFC Wallet Initial Funding',
-                fee: DEFAULT_STD_FEE,
-                pubKey: publicKey.toBase64(),
-                sequence: baseAccount.sequence,
-                accountNumber: baseAccount.accountNumber,
-                chainId: this.network === Network.Mainnet ? 'injective-1' : 'injective-888'
+            // 使用MsgBroadcasterWithPk发送交易
+            const broadcaster = new MsgBroadcasterWithPk({
+                privateKey: formattedPrivateKey,
+                network: this.network
             });
 
-            // 签名交易
-            const signatureBytes = await privateKeyObj.sign(Buffer.from(txRaw.bodyBytes));
-            txRaw.signatures = [signatureBytes];
+            console.log(`使用网络: ${this.network}, Chain ID: ${this.getChainId()}`);
 
-            // 广播交易
-            const txResponse = await txRestApi.broadcast(txRaw);
-
-            if (txResponse.code !== 0) {
-                throw new Error(`Transaction failed: ${txResponse.rawLog}`);
-            }
+            const txResponse = await broadcaster.broadcast({
+                msgs: msg,
+                memo: 'NFC Wallet Initial Funding'
+            });
 
             console.log(`Successfully sent ${amount} INJ to ${recipientAddress}, tx: ${txResponse.txHash}`);
 
@@ -285,8 +302,8 @@ export class InjectiveService {
             const accountDetailsResponse = await chainRestAuthApi.fetchAccount(senderAddress);
             const baseAccount = BaseAccount.fromRestApi(accountDetailsResponse);
 
-            // 创建发送消息
-            const amount_wei = new BigNumberInWei(amount).toFixed();
+            // 创建发送消息 - 转换INJ到Wei格式（1 INJ = 10^18 Wei）
+            const amount_wei = new BigNumberInBase(amount).toWei().toFixed();
 
             const msg = MsgSend.fromJSON({
                 amount: {
@@ -301,7 +318,7 @@ export class InjectiveService {
                 msg,
                 accountNumber: baseAccount.accountNumber,
                 sequence: baseAccount.sequence,
-                chainId: this.network === Network.Mainnet ? 'injective-1' : 'injective-888'
+                chainId: this.getChainId()
             };
 
         } catch (error) {
@@ -362,7 +379,7 @@ export class InjectiveService {
     } {
         return {
             network: this.network,
-            chainId: this.network === Network.Mainnet ? 'injective-1' : 'injective-888',
+            chainId: this.getChainId(),
             rpcUrl: this.endpoints.grpc,
             restUrl: this.endpoints.rest
         };

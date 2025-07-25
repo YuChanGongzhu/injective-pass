@@ -5,6 +5,7 @@ export declare class InjectiveService {
     private readonly network;
     private readonly endpoints;
     constructor(configService: ConfigService);
+    private getChainId;
     generateInjectiveWallet(): {
         privateKey: string;
         address: string;

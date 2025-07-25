@@ -14,6 +14,8 @@ const common_1 = require("@nestjs/common");
 const config_1 = require("@nestjs/config");
 const CryptoJS = require("crypto-js");
 const crypto = require("crypto");
+const ethers_1 = require("ethers");
+const sdk_ts_1 = require("@injectivelabs/sdk-ts");
 let CryptoService = class CryptoService {
     constructor(configService) {
         this.configService = configService;
@@ -21,6 +23,12 @@ let CryptoService = class CryptoService {
         if (!this.encryptionKey || this.encryptionKey.length !== 64) {
             throw new Error('AES_ENCRYPTION_KEY 必须是64位十六进制字符串 (32字节)');
         }
+    }
+    async generateWallet() {
+        return this.generateInjectiveWallet();
+    }
+    async encryptData(data) {
+        return this.encrypt(data);
     }
     encrypt(privateKey) {
         try {
@@ -60,6 +68,24 @@ let CryptoService = class CryptoService {
     generateApiKey(prefix = 'nfc_') {
         const randomBytes = crypto.randomBytes(32);
         return `${prefix}${randomBytes.toString('hex')}`;
+    }
+    generateInjectiveWallet() {
+        try {
+            const ethWallet = ethers_1.Wallet.createRandom();
+            const privateKeyObj = sdk_ts_1.PrivateKey.fromPrivateKey(ethWallet.privateKey);
+            const publicKey = privateKeyObj.toPublicKey();
+            const address = publicKey.toAddress();
+            return {
+                privateKey: ethWallet.privateKey,
+                address: address.toBech32(),
+                ethAddress: ethWallet.address,
+                publicKey: publicKey.toBase64()
+            };
+        }
+        catch (error) {
+            console.error('Error generating Injective wallet:', error);
+            throw new Error('Failed to generate Injective wallet');
+        }
     }
     validatePrivateKey(privateKey) {
         const cleanKey = privateKey.replace(/^0x/, '');

@@ -184,7 +184,7 @@ export class NFCController {
         },
     })
     async unbindNFC(@Body() unbindNFCDto: UnbindNFCDto) {
-        return this.nfcService.unbindNFC(unbindNFCDto);
+        return this.nfcService.unbindNFC(unbindNFCDto.uid);
     }
 
     @Get('stats')

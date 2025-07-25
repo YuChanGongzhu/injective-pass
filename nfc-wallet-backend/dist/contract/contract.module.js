@@ -10,13 +10,14 @@ exports.ContractModule = void 0;
 const common_1 = require("@nestjs/common");
 const contract_service_1 = require("./contract.service");
 const injective_service_1 = require("./injective.service");
+const transaction_service_1 = require("./transaction.service");
 let ContractModule = class ContractModule {
 };
 exports.ContractModule = ContractModule;
 exports.ContractModule = ContractModule = __decorate([
     (0, common_1.Module)({
-        providers: [contract_service_1.ContractService, injective_service_1.InjectiveService],
-        exports: [contract_service_1.ContractService, injective_service_1.InjectiveService],
+        providers: [contract_service_1.ContractService, injective_service_1.InjectiveService, transaction_service_1.TransactionService],
+        exports: [contract_service_1.ContractService, injective_service_1.InjectiveService, transaction_service_1.TransactionService],
     })
 ], ContractModule);
 //# sourceMappingURL=contract.module.js.map

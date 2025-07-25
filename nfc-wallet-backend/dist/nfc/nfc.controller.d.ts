@@ -21,8 +21,6 @@ export declare class NFCController {
     }>;
     unbindNFC(unbindNFCDto: UnbindNFCDto): Promise<{
         success: boolean;
-        nfcUnbound: boolean;
-        nftBurned: boolean;
         message: string;
     }>;
     getWalletStats(): Promise<{
@@ -34,6 +32,5 @@ export declare class NFCController {
     }>;
     getWalletBalance(address: string): Promise<{
         inj: string;
-        usd?: string;
     }>;
 }

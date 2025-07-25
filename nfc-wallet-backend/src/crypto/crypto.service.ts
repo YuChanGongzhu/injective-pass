@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as CryptoJS from 'crypto-js';
 import * as crypto from 'crypto';
+import { Wallet } from 'ethers';
+import { PrivateKey } from '@injectivelabs/sdk-ts';
 
 @Injectable()
 export class CryptoService {
@@ -12,6 +14,25 @@ export class CryptoService {
         if (!this.encryptionKey || this.encryptionKey.length !== 64) {
             throw new Error('AES_ENCRYPTION_KEY 必须是64位十六进制字符串 (32字节)');
         }
+    }
+
+    /**
+     * 生成新的钱包（兼容方法名）
+     */
+    async generateWallet(): Promise<{
+        address: string;
+        privateKey: string;
+        ethAddress: string;
+        publicKey: string;
+    }> {
+        return this.generateInjectiveWallet();
+    }
+
+    /**
+     * 加密数据（兼容方法名）
+     */
+    async encryptData(data: string): Promise<string> {
+        return this.encrypt(data);
     }
 
     /**
@@ -90,6 +111,36 @@ export class CryptoService {
     generateApiKey(prefix: string = 'nfc_'): string {
         const randomBytes = crypto.randomBytes(32);
         return `${prefix}${randomBytes.toString('hex')}`;
+    }
+
+    /**
+     * 生成Injective钱包
+     */
+    generateInjectiveWallet(): {
+        privateKey: string;
+        address: string;
+        ethAddress: string;
+        publicKey: string;
+    } {
+        try {
+            // 生成以太坊兼容的私钥
+            const ethWallet = Wallet.createRandom();
+
+            // 使用Injective SDK处理地址转换
+            const privateKeyObj = PrivateKey.fromPrivateKey(ethWallet.privateKey);
+            const publicKey = privateKeyObj.toPublicKey();
+            const address = publicKey.toAddress();
+
+            return {
+                privateKey: ethWallet.privateKey,
+                address: address.toBech32(), // Injective地址 (inj...)
+                ethAddress: ethWallet.address, // 以太坊格式地址
+                publicKey: publicKey.toBase64()
+            };
+        } catch (error) {
+            console.error('Error generating Injective wallet:', error);
+            throw new Error('Failed to generate Injective wallet');
+        }
     }
 
     /**

@@ -5,16 +5,12 @@ import {
     BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { ContractService } from '../contract/contract.service';
 import { UpdateDomainDto } from './dto/update-domain.dto';
 import { UserProfileDto } from './dto/user-profile.dto';
 
 @Injectable()
 export class UserService {
-    constructor(
-        private prisma: PrismaService,
-        private contractService: ContractService
-    ) { }
+    constructor(private prisma: PrismaService) { }
 
     /**
      * 更新.inj域名
@@ -30,28 +26,38 @@ export class UserService {
         // 生成完整的.inj域名
         const fullDomain = `${domainPrefix}.inj`;
 
-        // 检查钱包是否存在
-        const existingWallet = await this.prisma.nFCWallet.findUnique({
+        // 通过NFC UID查找用户
+        const nfcCard = await this.prisma.nFCCard.findUnique({
             where: { uid },
+            include: { user: true }
         });
 
-        if (!existingWallet) {
-            throw new NotFoundException('未找到对应的钱包');
+        if (!nfcCard) {
+            throw new NotFoundException('未找到对应的NFC卡片');
         }
 
         try {
-            // 更新域名
-            const updatedWallet = await this.prisma.nFCWallet.update({
-                where: { uid },
+            // 检查域名是否已被占用
+            const existingDomainUser = await this.prisma.user.findUnique({
+                where: { domain: fullDomain }
+            });
+
+            if (existingDomainUser && existingDomainUser.id !== nfcCard.user.id) {
+                throw new ConflictException('该.inj域名已被占用');
+            }
+
+            // 更新用户域名
+            const updatedUser = await this.prisma.user.update({
+                where: { id: nfcCard.user.id },
                 data: { domain: fullDomain },
             });
 
             return {
-                address: updatedWallet.address,
-                uid: updatedWallet.uid,
-                domain: updatedWallet.domain,
-                createdAt: updatedWallet.createdAt,
-                updatedAt: updatedWallet.updatedAt,
+                address: updatedUser.address,
+                uid: uid, // 返回查询用的UID
+                domain: updatedUser.domain,
+                createdAt: updatedUser.createdAt,
+                updatedAt: updatedUser.updatedAt,
             };
         } catch (error) {
             if (error.code === 'P2002') {
@@ -66,20 +72,21 @@ export class UserService {
      * 根据UID获取用户资料
      */
     async getUserProfile(uid: string): Promise<UserProfileDto> {
-        const wallet = await this.prisma.nFCWallet.findUnique({
+        const nfcCard = await this.prisma.nFCCard.findUnique({
             where: { uid },
+            include: { user: true }
         });
 
-        if (!wallet) {
+        if (!nfcCard) {
             throw new NotFoundException('未找到对应的用户');
         }
 
         return {
-            address: wallet.address,
-            uid: wallet.uid,
-            domain: wallet.domain,
-            createdAt: wallet.createdAt,
-            updatedAt: wallet.updatedAt,
+            address: nfcCard.user.address,
+            uid: uid,
+            domain: nfcCard.user.domain,
+            createdAt: nfcCard.user.createdAt,
+            updatedAt: nfcCard.user.updatedAt,
         };
     }
 
@@ -92,7 +99,7 @@ export class UserService {
         }
 
         const fullDomain = `${domainPrefix}.inj`;
-        const existingUser = await this.prisma.nFCWallet.findUnique({
+        const existingUser = await this.prisma.user.findUnique({
             where: { domain: fullDomain },
         });
 
@@ -103,25 +110,26 @@ export class UserService {
      * 删除域名（设置为null）
      */
     async removeDomain(uid: string): Promise<UserProfileDto> {
-        const existingWallet = await this.prisma.nFCWallet.findUnique({
+        const nfcCard = await this.prisma.nFCCard.findUnique({
             where: { uid },
+            include: { user: true }
         });
 
-        if (!existingWallet) {
-            throw new NotFoundException('未找到对应的钱包');
+        if (!nfcCard) {
+            throw new NotFoundException('未找到对应的NFC卡片');
         }
 
-        const updatedWallet = await this.prisma.nFCWallet.update({
-            where: { uid },
+        const updatedUser = await this.prisma.user.update({
+            where: { id: nfcCard.user.id },
             data: { domain: null },
         });
 
         return {
-            address: updatedWallet.address,
-            uid: updatedWallet.uid,
-            domain: updatedWallet.domain,
-            createdAt: updatedWallet.createdAt,
-            updatedAt: updatedWallet.updatedAt,
+            address: updatedUser.address,
+            uid: uid,
+            domain: updatedUser.domain,
+            createdAt: updatedUser.createdAt,
+            updatedAt: updatedUser.updatedAt,
         };
     }
 
@@ -129,20 +137,24 @@ export class UserService {
      * 根据域名查找用户
      */
     async getUserByDomain(domain: string): Promise<UserProfileDto | null> {
-        const wallet = await this.prisma.nFCWallet.findUnique({
+        const user = await this.prisma.user.findUnique({
             where: { domain },
+            include: { nfcCards: true }
         });
 
-        if (!wallet) {
+        if (!user) {
             return null;
         }
 
+        // 返回第一个NFC卡片的UID作为代表
+        const primaryUid = user.nfcCards.length > 0 ? user.nfcCards[0].uid : '';
+
         return {
-            address: wallet.address,
-            uid: wallet.uid,
-            domain: wallet.domain,
-            createdAt: wallet.createdAt,
-            updatedAt: wallet.updatedAt,
+            address: user.address,
+            uid: primaryUid,
+            domain: user.domain,
+            createdAt: user.createdAt,
+            updatedAt: user.updatedAt,
         };
     }
 
@@ -158,25 +170,25 @@ export class UserService {
         const skip = (page - 1) * limit;
 
         const [users, total] = await Promise.all([
-            this.prisma.nFCWallet.findMany({
+            this.prisma.user.findMany({
                 skip,
                 take: limit,
                 orderBy: { createdAt: 'desc' },
-                select: {
-                    uid: true,
-                    address: true,
-                    domain: true,
-                    createdAt: true,
-                    updatedAt: true,
+                include: {
+                    nfcCards: {
+                        select: {
+                            uid: true
+                        }
+                    }
                 },
             }),
-            this.prisma.nFCWallet.count(),
+            this.prisma.user.count(),
         ]);
 
         return {
             users: users.map((user) => ({
                 address: user.address,
-                uid: user.uid,
+                uid: user.nfcCards.length > 0 ? user.nfcCards[0].uid : '', // 返回第一个NFC卡片UID
                 domain: user.domain,
                 createdAt: user.createdAt,
                 updatedAt: user.updatedAt,
@@ -185,6 +197,134 @@ export class UserService {
             page,
             totalPages: Math.ceil(total / limit),
         };
+    }
+
+    /**
+     * 根据用户地址获取完整用户信息
+     */
+    async getUserByAddress(address: string): Promise<{
+        address: string;
+        ethAddress: string;
+        domain: string | null;
+        nfcCards: Array<{
+            uid: string;
+            nickname: string | null;
+            isActive: boolean;
+            createdAt: Date;
+        }>;
+        transactionCount: number;
+        createdAt: Date;
+        updatedAt: Date;
+    } | null> {
+        const user = await this.prisma.user.findUnique({
+            where: { address },
+            include: {
+                nfcCards: {
+                    orderBy: { createdAt: 'desc' }
+                },
+                transactions: {
+                    select: { id: true }
+                }
+            }
+        });
+
+        if (!user) {
+            return null;
+        }
+
+        return {
+            address: user.address,
+            ethAddress: user.ethAddress,
+            domain: user.domain,
+            nfcCards: user.nfcCards.map(card => ({
+                uid: card.uid,
+                nickname: card.nickname,
+                isActive: card.isActive,
+                createdAt: card.createdAt
+            })),
+            transactionCount: user.transactions.length,
+            createdAt: user.createdAt,
+            updatedAt: user.updatedAt
+        };
+    }
+
+    /**
+     * 获取用户的NFC卡片列表
+     */
+    async getUserNFCCards(address: string): Promise<Array<{
+        uid: string;
+        nickname: string | null;
+        isActive: boolean;
+        createdAt: Date;
+        updatedAt: Date;
+    }>> {
+        const user = await this.prisma.user.findUnique({
+            where: { address },
+            include: {
+                nfcCards: {
+                    orderBy: { createdAt: 'desc' }
+                }
+            }
+        });
+
+        if (!user) {
+            throw new NotFoundException('用户不存在');
+        }
+
+        return user.nfcCards.map(card => ({
+            uid: card.uid,
+            nickname: card.nickname,
+            isActive: card.isActive,
+            createdAt: card.createdAt,
+            updatedAt: card.updatedAt
+        }));
+    }
+
+    /**
+     * 更新NFC卡片昵称
+     */
+    async updateNFCCardNickname(
+        uid: string,
+        nickname: string
+    ): Promise<{ success: boolean; message: string }> {
+        const nfcCard = await this.prisma.nFCCard.findUnique({
+            where: { uid }
+        });
+
+        if (!nfcCard) {
+            throw new NotFoundException('NFC卡片不存在');
+        }
+
+        await this.prisma.nFCCard.update({
+            where: { uid },
+            data: { nickname }
+        });
+
+        return { success: true, message: 'NFC卡片昵称更新成功' };
+    }
+
+    /**
+     * 激活/停用NFC卡片
+     */
+    async toggleNFCCardStatus(
+        uid: string,
+        isActive: boolean
+    ): Promise<{ success: boolean; message: string }> {
+        const nfcCard = await this.prisma.nFCCard.findUnique({
+            where: { uid }
+        });
+
+        if (!nfcCard) {
+            throw new NotFoundException('NFC卡片不存在');
+        }
+
+        await this.prisma.nFCCard.update({
+            where: { uid },
+            data: { isActive }
+        });
+
+        const status = isActive ? '激活' : '停用';
+        return { success: true, message: `NFC卡片${status}成功` };
     }
 
     /**
