@@ -17,4 +17,18 @@ export declare class UserController {
         page: number;
         totalPages: number;
     }>;
+    exportPrivateKey(uid: string): Promise<{
+        success: boolean;
+        privateKey?: string;
+        warning?: string;
+        error?: string;
+    }>;
+    exportPrivateKeyByAddress(body: {
+        address: string;
+    }): Promise<{
+        success: boolean;
+        privateKey?: string;
+        warning?: string;
+        error?: string;
+    }>;
 }

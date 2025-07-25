@@ -3,14 +3,20 @@ import {
     NotFoundException,
     ConflictException,
     BadRequestException,
+    ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { CryptoService } from '../crypto/crypto.service';
 import { UpdateDomainDto } from './dto/update-domain.dto';
 import { UserProfileDto } from './dto/user-profile.dto';
+import { ExportPrivateKeyDto, PrivateKeyResponseDto } from './dto/export-private-key.dto';
 
 @Injectable()
 export class UserService {
-    constructor(private prisma: PrismaService) { }
+    constructor(
+        private prisma: PrismaService,
+        private cryptoService: CryptoService,
+    ) { }
 
     /**
      * 更新.inj域名
@@ -325,6 +331,75 @@ export class UserService {
 
         const status = isActive ? '激活' : '停用';
         return { success: true, message: `NFC卡片${status}成功` };
+    }
+
+    /**
+     * 导出用户私钥
+     */
+    async exportPrivateKey(exportPrivateKeyDto: ExportPrivateKeyDto): Promise<PrivateKeyResponseDto> {
+        const { uid, address, confirmation } = exportPrivateKeyDto;
+
+        // 验证确认字符串
+        if (confirmation !== 'I_UNDERSTAND_THE_RISKS') {
+            throw new ForbiddenException('需要确认理解私钥导出的风险');
+        }
+
+        // 验证至少提供了uid或address中的一个
+        if (!uid && !address) {
+            throw new BadRequestException('必须提供NFC UID或用户地址');
+        }
+
+        let user;
+
+        // 根据提供的参数查找用户
+        if (uid) {
+            // 通过NFC UID查找用户
+            const nfcCard = await this.prisma.nFCCard.findUnique({
+                where: { uid },
+                include: { user: true }
+            });
+
+            if (!nfcCard) {
+                throw new NotFoundException('未找到对应的NFC卡片');
+            }
+
+            user = nfcCard.user;
+
+            // 如果同时提供了address，验证是否匹配
+            if (address && user.address !== address) {
+                throw new ForbiddenException('提供的地址与NFC UID对应的用户不匹配');
+            }
+        } else if (address) {
+            // 通过地址查找用户
+            user = await this.prisma.user.findUnique({
+                where: { address }
+            });
+
+            if (!user) {
+                throw new NotFoundException('未找到对应的用户');
+            }
+        }
+
+        try {
+            // 解密私钥
+            const decryptedPrivateKey = this.cryptoService.decrypt(user.privateKeyEnc);
+
+            // 确保私钥格式正确（添加0x前缀如果没有的话）
+            const formattedPrivateKey = decryptedPrivateKey.startsWith('0x')
+                ? decryptedPrivateKey
+                : `0x${decryptedPrivateKey}`;
+
+            // 返回私钥和相关信息
+            return {
+                address: user.address,
+                privateKey: formattedPrivateKey,
+                exportedAt: new Date(),
+                warning: '警告：私钥是您钱包的完全控制权限。请妥善保管，不要与任何人分享。如果私钥泄露，您的资产可能会丢失。'
+            };
+        } catch (error) {
+            console.error('私钥解密失败:', error);
+            throw new BadRequestException('私钥解密失败，可能数据已损坏');
+        }
     }
 
     /**

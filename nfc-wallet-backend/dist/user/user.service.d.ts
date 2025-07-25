@@ -1,9 +1,11 @@
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateDomainDto } from './dto/update-domain.dto';
 import { UserProfileDto } from './dto/user-profile.dto';
+import { CryptoService } from '../crypto/crypto.service';
 export declare class UserService {
     private prisma;
-    constructor(prisma: PrismaService);
+    private cryptoService;
+    constructor(prisma: PrismaService, cryptoService: CryptoService);
     updateDomain(updateDomainDto: UpdateDomainDto): Promise<UserProfileDto>;
     getUserProfile(uid: string): Promise<UserProfileDto>;
     checkDomainAvailability(domainPrefix: string): Promise<{
@@ -45,6 +47,18 @@ export declare class UserService {
     toggleNFCCardStatus(uid: string, isActive: boolean): Promise<{
         success: boolean;
         message: string;
+    }>;
+    exportPrivateKey(uid: string): Promise<{
+        success: boolean;
+        privateKey?: string;
+        warning?: string;
+        error?: string;
+    }>;
+    exportPrivateKeyByAddress(address: string): Promise<{
+        success: boolean;
+        privateKey?: string;
+        warning?: string;
+        error?: string;
     }>;
     private validateDomainPrefix;
 }

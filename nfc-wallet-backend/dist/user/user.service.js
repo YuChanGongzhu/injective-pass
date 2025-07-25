@@ -12,9 +12,11 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.UserService = void 0;
 const common_1 = require("@nestjs/common");
 const prisma_service_1 = require("../prisma/prisma.service");
+const crypto_service_1 = require("../crypto/crypto.service");
 let UserService = class UserService {
-    constructor(prisma) {
+    constructor(prisma, cryptoService) {
         this.prisma = prisma;
+        this.cryptoService = cryptoService;
     }
     async updateDomain(updateDomainDto) {
         const { uid, domainPrefix } = updateDomainDto;
@@ -225,6 +227,72 @@ let UserService = class UserService {
         const status = isActive ? '激活' : '停用';
         return { success: true, message: `NFC卡片${status}成功` };
     }
+    async exportPrivateKey(uid) {
+        try {
+            const nfcCard = await this.prisma.nFCCard.findUnique({
+                where: { uid },
+                include: {
+                    user: {
+                        select: {
+                            id: true,
+                            address: true,
+                            privateKeyEnc: true,
+                        }
+                    }
+                }
+            });
+            if (!nfcCard || !nfcCard.user) {
+                return {
+                    success: false,
+                    error: '未找到该NFC卡对应的用户'
+                };
+            }
+            const decryptedPrivateKey = await this.cryptoService.decrypt(nfcCard.user.privateKeyEnc);
+            return {
+                success: true,
+                privateKey: decryptedPrivateKey,
+                warning: '私钥是您钱包的唯一凭证，请妥善保管。任何人获得您的私钥都可以完全控制您的资产。建议将私钥安全存储在离线环境中。'
+            };
+        }
+        catch (error) {
+            console.error('Export private key error:', error);
+            return {
+                success: false,
+                error: '导出私钥失败，请稍后重试'
+            };
+        }
+    }
+    async exportPrivateKeyByAddress(address) {
+        try {
+            const user = await this.prisma.user.findUnique({
+                where: { address },
+                select: {
+                    id: true,
+                    address: true,
+                    privateKeyEnc: true,
+                }
+            });
+            if (!user) {
+                return {
+                    success: false,
+                    error: '未找到该地址对应的用户'
+                };
+            }
+            const decryptedPrivateKey = await this.cryptoService.decrypt(user.privateKeyEnc);
+            return {
+                success: true,
+                privateKey: decryptedPrivateKey,
+                warning: '私钥是您钱包的唯一凭证，请妥善保管。任何人获得您的私钥都可以完全控制您的资产。建议将私钥安全存储在离线环境中。'
+            };
+        }
+        catch (error) {
+            console.error('Export private key by address error:', error);
+            return {
+                success: false,
+                error: '导出私钥失败，请稍后重试'
+            };
+        }
+    }
     validateDomainPrefix(domainPrefix) {
         const regex = /^[a-z0-9]+([a-z0-9-]*[a-z0-9])?$/;
         return domainPrefix.length >= 3 &&
@@ -236,6 +304,7 @@ let UserService = class UserService {
 exports.UserService = UserService;
 exports.UserService = UserService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [prisma_service_1.PrismaService])
+    __metadata("design:paramtypes", [prisma_service_1.PrismaService,
+        crypto_service_1.CryptoService])
 ], UserService);
 //# sourceMappingURL=user.service.js.map

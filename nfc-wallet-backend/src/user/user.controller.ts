@@ -3,6 +3,7 @@ import {
   Put,
   Get,
   Delete,
+  Post,
   Body,
   Param,
   Query,
@@ -18,10 +19,12 @@ import {
   ApiBadRequestResponse,
   ApiConflictResponse,
   ApiNotFoundResponse,
+  ApiForbiddenResponse,
 } from '@nestjs/swagger';
 import { UserService } from './user.service';
 import { UpdateDomainDto } from './dto/update-domain.dto';
 import { UserProfileDto } from './dto/user-profile.dto';
+import { ExportPrivateKeyDto, PrivateKeyResponseDto } from './dto/export-private-key.dto';
 
 @ApiTags('用户管理')
 @Controller('api/user')
@@ -197,5 +200,29 @@ export class UserController {
   })
   async getUserList(@Query('page') page?: number, @Query('limit') limit?: number) {
     return this.userService.getUserList(page || 1, limit || 20);
+  }
+
+  @Post('export-private-key')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: '导出用户私钥',
+    description: '安全地导出用户的私钥。需要身份验证和确认操作。此操作存在安全风险，请谨慎使用。',
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功导出私钥',
+    type: PrivateKeyResponseDto,
+  })
+  @ApiBadRequestResponse({
+    description: '请求参数无效或私钥解密失败',
+  })
+  @ApiForbiddenResponse({
+    description: '未通过安全验证或权限不足',
+  })
+  @ApiNotFoundResponse({
+    description: '未找到对应的用户或NFC卡片',
+  })
+  async exportPrivateKey(@Body() exportPrivateKeyDto: ExportPrivateKeyDto): Promise<PrivateKeyResponseDto> {
+    return this.userService.exportPrivateKey(exportPrivateKeyDto);
   }
 } 

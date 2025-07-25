@@ -40,6 +40,12 @@ let UserController = class UserController {
     async getUserList(page, limit) {
         return this.userService.getUserList(page || 1, limit || 20);
     }
+    async exportPrivateKey(uid) {
+        return this.userService.exportPrivateKey(uid);
+    }
+    async exportPrivateKeyByAddress(body) {
+        return this.userService.exportPrivateKeyByAddress(body.address);
+    }
 };
 exports.UserController = UserController;
 __decorate([
@@ -226,6 +232,29 @@ __decorate([
     __metadata("design:paramtypes", [Number, Number]),
     __metadata("design:returntype", Promise)
 ], UserController.prototype, "getUserList", null);
+__decorate([
+    (0, common_1.Post)('export-private-key/:uid'),
+    (0, swagger_1.ApiOperation)({ summary: '导出私钥', description: '通过NFC UID导出用户私钥' }),
+    (0, swagger_1.ApiParam)({ name: 'uid', description: 'NFC UID', example: 'A1B2C3D4E5F67890' }),
+    (0, swagger_1.ApiResponse)({ status: 200, description: '导出成功' }),
+    (0, swagger_1.ApiResponse)({ status: 404, description: '用户不存在' }),
+    (0, swagger_1.ApiResponse)({ status: 500, description: '服务器错误' }),
+    __param(0, (0, common_1.Param)('uid')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], UserController.prototype, "exportPrivateKey", null);
+__decorate([
+    (0, common_1.Post)('export-private-key-by-address'),
+    (0, swagger_1.ApiOperation)({ summary: '通过地址导出私钥', description: '通过钱包地址导出用户私钥' }),
+    (0, swagger_1.ApiResponse)({ status: 200, description: '导出成功' }),
+    (0, swagger_1.ApiResponse)({ status: 404, description: '用户不存在' }),
+    (0, swagger_1.ApiResponse)({ status: 500, description: '服务器错误' }),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], UserController.prototype, "exportPrivateKeyByAddress", null);
 exports.UserController = UserController = __decorate([
     (0, swagger_1.ApiTags)('用户管理'),
     (0, common_1.Controller)('api/user'),
