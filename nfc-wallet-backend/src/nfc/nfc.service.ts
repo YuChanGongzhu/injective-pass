@@ -1,9 +1,10 @@
-import { Injectable, ConflictException, BadRequestException } from '@nestjs/common';
+import { Injectable, ConflictException, BadRequestException, Logger } from '@nestjs/common';
 import { Wallet } from 'ethers';
-import { getInjectiveAddress } from '@injectivelabs/sdk-ts';
+import { PrivateKey } from '@injectivelabs/sdk-ts';
 import { PrismaService } from '../prisma/prisma.service';
 import { CryptoService } from '../crypto/crypto.service';
 import { ContractService } from '../contract/contract.service';
+import { InjectiveService } from '../contract/injective.service';
 import { RegisterNFCDto } from './dto/register-nfc.dto';
 import { UnbindNFCDto } from './dto/unbind-nfc.dto';
 import { WalletResponseDto } from './dto/wallet-response.dto';
@@ -12,14 +13,18 @@ import { CardOwnershipResponseDto, OwnershipRecord } from './dto/card-ownership-
 
 @Injectable()
 export class NFCService {
+    private readonly logger = new Logger(NFCService.name);
+
     constructor(
         private prisma: PrismaService,
         private cryptoService: CryptoService,
-        private contractService: ContractService
+        private contractService: ContractService,
+        private injectiveService: InjectiveService
     ) { }
 
     /**
      * 注册NFC卡片并生成或返回已有的以太坊钱包
+     * 增强版：支持空白卡检测、自动资金发送、NFT铸造
      */
     async registerNFC(registerNFCDto: RegisterNFCDto): Promise<WalletResponseDto> {
         const { uid } = registerNFCDto;
@@ -39,9 +44,13 @@ export class NFCService {
             return {
                 address: existingWallet.address,
                 ethAddress: existingWallet.ethAddress,
+                publicKey: existingWallet.publicKey,
                 uid: existingWallet.uid,
                 domain: existingWallet.domain,
+                nftTokenId: existingWallet.nftTokenId,
                 isNewWallet: false,
+                isBlankCard: false,
+                initialFunded: existingWallet.initialFunded,
                 createdAt: existingWallet.createdAt,
             };
         }
@@ -59,16 +68,29 @@ export class NFCService {
                     uid,
                     address: newWallet.address,
                     ethAddress: newWallet.ethAddress,
+                    publicKey: newWallet.publicKey,
                     privateKeyEnc: encryptedPrivateKey,
+                    initialFunded: false,
                 },
+            });
+
+            this.logger.log(`新建空白卡钱包: ${newWallet.address} for UID: ${uid}`);
+
+            // 异步处理初始化流程：发送资金 + 铸造NFT
+            this.initializeBlankCard(uid).catch(error => {
+                this.logger.error(`空白卡初始化失败 for UID ${uid}:`, error);
             });
 
             return {
                 address: savedWallet.address,
                 ethAddress: savedWallet.ethAddress,
+                publicKey: savedWallet.publicKey,
                 uid: savedWallet.uid,
                 domain: savedWallet.domain,
+                nftTokenId: savedWallet.nftTokenId,
                 isNewWallet: true,
+                isBlankCard: true,
+                initialFunded: false,
                 createdAt: savedWallet.createdAt,
             };
         } catch (error) {
@@ -76,6 +98,65 @@ export class NFCService {
                 throw new ConflictException('该NFC UID已被注册');
             }
             throw new BadRequestException('钱包创建失败');
+        }
+    }
+
+    /**
+     * 初始化空白卡：发送初始资金 + 铸造小猫NFT
+     */
+    private async initializeBlankCard(uid: string): Promise<void> {
+        try {
+            const wallet = await this.prisma.nFCWallet.findUnique({
+                where: { uid },
+            });
+
+            if (!wallet || wallet.initialFunded) {
+                return; // 已经初始化过了
+            }
+
+            this.logger.log(`开始初始化空白卡: ${wallet.address}`);
+
+            // 1. 发送初始资金 (0.1 INJ)
+            const fundingResult = await this.injectiveService.sendInitialFunds(wallet.address, '0.1');
+
+            if (!fundingResult.success) {
+                this.logger.error(`资金发送失败 for ${wallet.address}:`, fundingResult.error);
+                return;
+            }
+
+            this.logger.log(`成功发送初始资金到 ${wallet.address}, tx: ${fundingResult.txHash}`);
+
+            // 2. 铸造小猫NFT
+            let nftTokenId = null;
+            try {
+                const nftResult = await this.contractService.mintCatNFT(
+                    wallet.address,
+                    `${wallet.address.slice(0, 6)}...${wallet.address.slice(-4)} Cat`,
+                    `A unique cat NFT for Injective Pass holder`
+                );
+
+                if (nftResult.success) {
+                    nftTokenId = nftResult.tokenId;
+                    this.logger.log(`成功铸造NFT for ${wallet.address}, tokenId: ${nftTokenId}`);
+                } else {
+                    this.logger.error(`NFT铸造失败 for ${wallet.address}:`, nftResult.error);
+                }
+            } catch (nftError) {
+                this.logger.error(`NFT铸造异常 for ${wallet.address}:`, nftError);
+            }
+
+            // 3. 更新数据库状态
+            await this.prisma.nFCWallet.update({
+                where: { uid },
+                data: {
+                    initialFunded: true,
+                    nftTokenId: nftTokenId,
+                },
+            });
+
+            this.logger.log(`空白卡初始化完成: ${wallet.address}`);
+        } catch (error) {
+            this.logger.error(`空白卡初始化异常 for UID ${uid}:`, error);
         }
     }
 
@@ -94,9 +175,13 @@ export class NFCService {
         return {
             address: wallet.address,
             ethAddress: wallet.ethAddress,
+            publicKey: wallet.publicKey,
             uid: wallet.uid,
             domain: wallet.domain,
+            nftTokenId: wallet.nftTokenId,
             isNewWallet: false,
+            isBlankCard: !wallet.initialFunded, // 如果还没有初始资金，认为是空白卡
+            initialFunded: wallet.initialFunded,
             createdAt: wallet.createdAt,
         };
     }
@@ -122,23 +207,119 @@ export class NFCService {
 
     /**
      * 生成新的Injective钱包
-     * Injective支持以太坊私钥，但地址格式为Cosmos格式（inj开头）
+     * 增强版：使用@injectivelabs/sdk-ts正确生成地址和公钥
      */
-    private async generateInjectiveWallet(): Promise<{ address: string; privateKey: string; ethAddress: string }> {
+    private async generateInjectiveWallet(): Promise<{
+        address: string;
+        privateKey: string;
+        ethAddress: string;
+        publicKey: string;
+    }> {
         try {
             // 生成以太坊私钥（Injective兼容）
-            const wallet = Wallet.createRandom();
-            // 转换为Injective地址格式（inj开头）
-            const injectiveAddress = getInjectiveAddress(wallet.address);
+            const ethWallet = Wallet.createRandom();
+
+            // 使用Injective SDK处理地址转换和公钥生成
+            const privateKeyObj = PrivateKey.fromPrivateKey(ethWallet.privateKey);
+            const publicKeyObj = privateKeyObj.toPublicKey();
+            const addressObj = publicKeyObj.toAddress();
 
             return {
-                address: injectiveAddress,        // Injective地址 (inj...)
-                privateKey: wallet.privateKey,    // 私钥（通用）
-                ethAddress: wallet.address,       // 以太坊格式地址（备用）
+                address: addressObj.toBech32(),      // Injective地址 (inj...)
+                privateKey: ethWallet.privateKey,    // 私钥（通用）
+                ethAddress: ethWallet.address,       // 以太坊格式地址（备用）
+                publicKey: publicKeyObj.toBase64(),  // 公钥 (base64格式)
             };
         } catch (error) {
+            this.logger.error('Injective钱包生成失败:', error);
             throw new BadRequestException('Injective钱包生成失败');
         }
+    }
+
+    /**
+     * 创建.inj域名
+     */
+    async createDomain(uid: string, domainName: string): Promise<{
+        success: boolean;
+        domain?: string;
+        error?: string;
+    }> {
+        try {
+            // 验证域名格式
+            if (!this.validateDomainName(domainName)) {
+                return {
+                    success: false,
+                    error: '域名格式无效'
+                };
+            }
+
+            // 检查域名是否已被占用
+            const existingDomain = await this.prisma.nFCWallet.findUnique({
+                where: { domain: `${domainName}.inj` },
+            });
+
+            if (existingDomain) {
+                return {
+                    success: false,
+                    error: '域名已被占用'
+                };
+            }
+
+            // 更新数据库
+            const fullDomain = `${domainName}.inj`;
+            await this.prisma.nFCWallet.update({
+                where: { uid },
+                data: { domain: fullDomain },
+            });
+
+            this.logger.log(`域名创建成功: ${fullDomain} for UID: ${uid}`);
+
+            return {
+                success: true,
+                domain: fullDomain
+            };
+        } catch (error) {
+            this.logger.error(`域名创建失败 for UID ${uid}:`, error);
+            return {
+                success: false,
+                error: '域名创建失败'
+            };
+        }
+    }
+
+    /**
+     * 检查域名可用性
+     */
+    async checkDomainAvailability(domainName: string): Promise<{
+        available: boolean;
+        domain: string;
+    }> {
+        const fullDomain = `${domainName}.inj`;
+
+        if (!this.validateDomainName(domainName)) {
+            return {
+                available: false,
+                domain: fullDomain
+            };
+        }
+
+        const existingDomain = await this.prisma.nFCWallet.findUnique({
+            where: { domain: fullDomain },
+        });
+
+        return {
+            available: !existingDomain,
+            domain: fullDomain
+        };
+    }
+
+    /**
+     * 验证域名格式
+     */
+    private validateDomainName(domain: string): boolean {
+        // 域名规则：3-63个字符，只能包含字母、数字和连字符，不能以连字符开头或结尾
+        const domainRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]{1,61}[a-zA-Z0-9])?$/;
+        return domainRegex.test(domain);
     }
 
     /**
@@ -157,15 +338,29 @@ export class NFCService {
     async getWalletStats(): Promise<{
         totalWallets: number;
         walletsWithDomain: number;
+        walletsWithNFT: number;
+        fundedWallets: number;
         recentRegistrations: number;
     }> {
-        const [totalWallets, walletsWithDomain, recentRegistrations] = await Promise.all([
+        const [totalWallets, walletsWithDomain, walletsWithNFT, fundedWallets, recentRegistrations] = await Promise.all([
             this.prisma.nFCWallet.count(),
             this.prisma.nFCWallet.count({
                 where: {
                     domain: {
                         not: null,
                     },
+                },
+            }),
+            this.prisma.nFCWallet.count({
+                where: {
+                    nftTokenId: {
+                        not: null,
+                    },
+                },
+            }),
+            this.prisma.nFCWallet.count({
+                where: {
+                    initialFunded: true,
                 },
             }),
             this.prisma.nFCWallet.count({
@@ -180,8 +375,26 @@ export class NFCService {
         return {
             totalWallets,
             walletsWithDomain,
+            walletsWithNFT,
+            fundedWallets,
             recentRegistrations,
         };
+    }
+
+    /**
+     * 查询钱包余额
+     */
+    async getWalletBalance(address: string): Promise<{
+        inj: string;
+        usd?: string;
+    }> {
+        try {
+            const balance = await this.injectiveService.getAccountBalance(address);
+            return balance;
+        } catch (error) {
+            this.logger.error('Error getting wallet balance:', error);
+            throw new BadRequestException('无法获取钱包余额');
+        }
     }
 
     /**
@@ -200,59 +413,59 @@ export class NFCService {
             throw new BadRequestException('NFC UID格式无效');
         }
 
-        // 检查NFC是否已绑定
-        const existingWallet = await this.prisma.nFCWallet.findUnique({
+        // 查找NFC钱包
+        const wallet = await this.prisma.nFCWallet.findUnique({
             where: { uid },
         });
 
-        if (!existingWallet) {
-            throw new BadRequestException('该NFC卡片未注册或已解绑');
+        if (!wallet) {
+            throw new BadRequestException('NFC卡片未注册');
         }
 
         try {
-            // 1. 执行链上解绑流程（包含NFT销毁）
-            let chainResult = { nfcUnbound: false, nftBurned: false, success: false };
-            try {
-                chainResult = await this.contractService.completeNFCUnbindProcess(uid, resetToBlank);
-                console.log(`Chain unbind result for ${uid}:`, chainResult);
-            } catch (error) {
-                console.warn(`Chain unbind failed for ${uid}, proceeding with database only:`, error);
+            let nftBurned = false;
+
+            // 如果有NFT，尝试销毁
+            if (wallet.nftTokenId) {
+                try {
+                    const burnResult = await this.contractService.burnNFT(
+                        wallet.nftTokenId,
+                        wallet.address
+                    );
+                    nftBurned = burnResult.success;
+
+                    if (burnResult.success) {
+                        this.logger.log(`NFT销毁成功: tokenId ${wallet.nftTokenId}`);
+                    } else {
+                        this.logger.error(`NFT销毁失败: ${burnResult.error}`);
+                    }
+                } catch (error) {
+                    this.logger.error('NFT销毁异常:', error);
+                }
             }
 
-            // 2. 更新数据库状态
-            if (resetToBlank) {
-                // 保持记录但重置状态，表示卡片变为空白
-                await this.prisma.nFCWallet.update({
-                    where: { uid },
-                    data: {
-                        // 保留地址和私钥信息，但可以考虑是否清除
-                        // 根据业务需求，可能需要保留这些信息用于恢复
-                        // 或者完全清除以确保安全
-                        domain: null, // 清除域名
-                        updatedAt: new Date(),
-                    },
-                });
-            } else {
-                // 完全删除记录
-                await this.prisma.nFCWallet.delete({
-                    where: { uid },
-                });
-            }
+            // 删除钱包记录
+            await this.prisma.nFCWallet.delete({
+                where: { uid },
+            });
 
-            const message = resetToBlank
-                ? `NFC卡片 ${uid} 已解绑并重置为空白状态，可以重新激活`
-                : `NFC卡片 ${uid} 已完全解绑并删除`;
+            this.logger.log(`NFC卡片解绑成功: UID ${uid}, 钱包地址: ${wallet.address}`);
 
             return {
                 success: true,
-                nfcUnbound: chainResult.nfcUnbound,
-                nftBurned: chainResult.nftBurned,
-                message
+                nfcUnbound: true,
+                nftBurned,
+                message: '解绑成功'
             };
 
         } catch (error) {
-            console.error(`Error unbinding NFC ${uid}:`, error);
-            throw new BadRequestException('NFC解绑失败');
+            this.logger.error(`NFC解绑失败 for UID ${uid}:`, error);
+            return {
+                success: false,
+                nfcUnbound: false,
+                nftBurned: false,
+                message: '解绑失败: ' + error.message
+            };
         }
     }
 

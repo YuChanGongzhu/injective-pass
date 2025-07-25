@@ -31,6 +31,13 @@ __decorate([
 ], WalletResponseDto.prototype, "ethAddress", void 0);
 __decorate([
     (0, swagger_1.ApiProperty)({
+        description: '公钥 (base64格式)',
+        example: 'AuY3ASbyRHfgKNkg7rumWCXzSGCvvgtpR6KKWlpuuQ9Y',
+    }),
+    __metadata("design:type", String)
+], WalletResponseDto.prototype, "publicKey", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({
         description: 'NFC UID',
         example: '04:1a:2b:3c:4d:5e:6f',
     }),
@@ -46,11 +53,33 @@ __decorate([
 ], WalletResponseDto.prototype, "domain", void 0);
 __decorate([
     (0, swagger_1.ApiProperty)({
+        description: 'NFT Token ID（如果铸造了NFT）',
+        example: '123456',
+        required: false,
+    }),
+    __metadata("design:type", String)
+], WalletResponseDto.prototype, "nftTokenId", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({
         description: '是否为新创建的钱包',
         example: true,
     }),
     __metadata("design:type", Boolean)
 ], WalletResponseDto.prototype, "isNewWallet", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({
+        description: '是否为空白卡（未初始化）',
+        example: false,
+    }),
+    __metadata("design:type", Boolean)
+], WalletResponseDto.prototype, "isBlankCard", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({
+        description: '是否已进行初始资金发送',
+        example: true,
+    }),
+    __metadata("design:type", Boolean)
+], WalletResponseDto.prototype, "initialFunded", void 0);
 __decorate([
     (0, swagger_1.ApiProperty)({
         description: '创建时间',

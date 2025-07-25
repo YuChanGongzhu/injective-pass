@@ -15,8 +15,11 @@ model NFCWallet {
   uid           String   @unique @db.VarChar(255) // NFC卡片UID
   address       String   @db.VarChar(63) // Injective地址 (inj...)
   ethAddress    String?  @db.VarChar(42) // 以太坊格式地址（备用）
+  publicKey     String   @db.Text // 公钥 (base64格式)
   privateKeyEnc String   @db.Text // 加密的私钥
   domain        String?  @unique @db.VarChar(70) // .inj域名，可选且唯一
+  nftTokenId    String?  @db.VarChar(100) // NFT代币ID（如果铸造了NFT）
+  initialFunded Boolean  @default(false) // 是否已进行初始资金发送
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

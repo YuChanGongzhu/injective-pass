@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.28;
+pragma solidity 0.8.30;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
@@ -108,7 +108,7 @@ contract NFCWalletRegistry is Ownable {
     function detectAndBindBlankCard(
         string memory nfcUID,
         address newWalletAddress
-    ) external onlyAuthorizedOperator returns (bool) {
+    ) public onlyAuthorizedOperator returns (bool) {
         require(bytes(nfcUID).length > 0, "Invalid NFC UID");
         require(newWalletAddress != address(0), "Invalid wallet address");
 
@@ -547,7 +547,9 @@ contract NFCWalletRegistry is Ownable {
                 nfcBindings[nfcUIDs[i]] = NFCBinding({
                     walletAddress: walletAddresses[i],
                     boundAt: block.timestamp,
+                    unboundAt: 0,
                     isActive: true,
+                    isBlank: false,
                     metadata: ""
                 });
 
@@ -563,3 +565,6 @@ contract NFCWalletRegistry is Ownable {
         }
     }
 }
+
+
+

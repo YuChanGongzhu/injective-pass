@@ -4,6 +4,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { NFCModule } from './nfc/nfc.module';
 import { UserModule } from './user/user.module';
 import { CryptoModule } from './crypto/crypto.module';
+import { ContractModule } from './contract/contract.module';
 
 @Module({
     imports: [
@@ -13,6 +14,7 @@ import { CryptoModule } from './crypto/crypto.module';
         }),
         PrismaModule,
         CryptoModule,
+        ContractModule,
         NFCModule,
         UserModule,
     ],

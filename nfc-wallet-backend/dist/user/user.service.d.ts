@@ -1,9 +1,11 @@
 import { PrismaService } from '../prisma/prisma.service';
+import { ContractService } from '../contract/contract.service';
 import { UpdateDomainDto } from './dto/update-domain.dto';
 import { UserProfileDto } from './dto/user-profile.dto';
 export declare class UserService {
     private prisma;
-    constructor(prisma: PrismaService);
+    private contractService;
+    constructor(prisma: PrismaService, contractService: ContractService);
     updateDomain(updateDomainDto: UpdateDomainDto): Promise<UserProfileDto>;
     getUserProfile(uid: string): Promise<UserProfileDto>;
     checkDomainAvailability(domainPrefix: string): Promise<{

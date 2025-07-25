@@ -11,12 +11,18 @@ const common_1 = require("@nestjs/common");
 const nfc_controller_1 = require("./nfc.controller");
 const nfc_service_1 = require("./nfc.service");
 const crypto_module_1 = require("../crypto/crypto.module");
+const contract_module_1 = require("../contract/contract.module");
+const prisma_module_1 = require("../prisma/prisma.module");
 let NFCModule = class NFCModule {
 };
 exports.NFCModule = NFCModule;
 exports.NFCModule = NFCModule = __decorate([
     (0, common_1.Module)({
-        imports: [crypto_module_1.CryptoModule],
+        imports: [
+            crypto_module_1.CryptoModule,
+            contract_module_1.ContractModule,
+            prisma_module_1.PrismaModule,
+        ],
         controllers: [nfc_controller_1.NFCController],
         providers: [nfc_service_1.NFCService],
         exports: [nfc_service_1.NFCService],

@@ -15,6 +15,12 @@ export class WalletResponseDto {
     ethAddress?: string;
 
     @ApiProperty({
+        description: '公钥 (base64格式)',
+        example: 'AuY3ASbyRHfgKNkg7rumWCXzSGCvvgtpR6KKWlpuuQ9Y',
+    })
+    publicKey: string;
+
+    @ApiProperty({
         description: 'NFC UID',
         example: '04:1a:2b:3c:4d:5e:6f',
     })
@@ -28,10 +34,29 @@ export class WalletResponseDto {
     domain?: string;
 
     @ApiProperty({
+        description: 'NFT Token ID（如果铸造了NFT）',
+        example: '123456',
+        required: false,
+    })
+    nftTokenId?: string;
+
+    @ApiProperty({
         description: '是否为新创建的钱包',
         example: true,
     })
     isNewWallet: boolean;
+
+    @ApiProperty({
+        description: '是否为空白卡（未初始化）',
+        example: false,
+    })
+    isBlankCard: boolean;
+
+    @ApiProperty({
+        description: '是否已进行初始资金发送',
+        example: true,
+    })
+    initialFunded: boolean;
 
     @ApiProperty({
         description: '创建时间',

@@ -13,6 +13,7 @@ const prisma_module_1 = require("./prisma/prisma.module");
 const nfc_module_1 = require("./nfc/nfc.module");
 const user_module_1 = require("./user/user.module");
 const crypto_module_1 = require("./crypto/crypto.module");
+const contract_module_1 = require("./contract/contract.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -25,6 +26,7 @@ exports.AppModule = AppModule = __decorate([
             }),
             prisma_module_1.PrismaModule,
             crypto_module_1.CryptoModule,
+            contract_module_1.ContractModule,
             nfc_module_1.NFCModule,
             user_module_1.UserModule,
         ],

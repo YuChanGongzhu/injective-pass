@@ -12,9 +12,11 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.UserService = void 0;
 const common_1 = require("@nestjs/common");
 const prisma_service_1 = require("../prisma/prisma.service");
+const contract_service_1 = require("../contract/contract.service");
 let UserService = class UserService {
-    constructor(prisma) {
+    constructor(prisma, contractService) {
         this.prisma = prisma;
+        this.contractService = contractService;
     }
     async updateDomain(updateDomainDto) {
         const { uid, domainPrefix } = updateDomainDto;
@@ -148,6 +150,7 @@ let UserService = class UserService {
 exports.UserService = UserService;
 exports.UserService = UserService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [prisma_service_1.PrismaService])
+    __metadata("design:paramtypes", [prisma_service_1.PrismaService,
+        contract_service_1.ContractService])
 ], UserService);
 //# sourceMappingURL=user.service.js.map
