@@ -1,4 +1,3 @@
-/* --- Base Styles & Variables --- */
 :root {
   /* Light Theme (Default) */
   --bg-color: #FAFBFC;
@@ -60,6 +59,13 @@ body {
   overflow-y: auto;
   min-height: 100vh;
   width: 100vw;
+  /* Android优化 */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
 }
 
 /* --- Language Toggle --- */
@@ -505,22 +511,47 @@ body {
   background: transparent;
   overflow-y: auto;
   overflow-x: hidden;
+  /* Android优化 */
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  will-change: opacity;
 }
 
 .screen.active {
   display: flex;
+  /* Android优化：减少闪烁 */
+  opacity: 1;
+  transform: none;
+  -webkit-transform: none;
 }
 
 @keyframes fadeIn {
   from {
     opacity: 0;
     transform: scale(0.98);
+    -webkit-transform: scale(0.98);
   }
 
   to {
     opacity: 1;
     transform: scale(1);
+    -webkit-transform: scale(1);
   }
+}
+
+/* Android设备使用更简单的动画 */
+.android-device .screen {
+  animation: none;
+  opacity: 1;
+  transform: none;
+  -webkit-transform: none;
+}
+
+.android-device .screen.active {
+  animation: none;
+  opacity: 1;
+  transform: none;
+  -webkit-transform: none;
 }
 
 /* --- Header Banner --- */
@@ -1257,6 +1288,29 @@ body {
   box-shadow: 0 4px 12px rgba(76, 61, 255, 0.3);
 }
 
+/* Android优化 */
+@supports (-webkit-appearance: none) {
+  /* WebKit浏览器优化 */
+  .nfc-scan-container,
+  .ecosystem-card,
+  .activity-item,
+  .settings-item {
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+  }
+}
+
+/* Android Chrome优化 */
+@media screen and (-webkit-min-device-pixel-ratio: 0) {
+  .nfc-scan-container,
+  .ecosystem-card,
+  .activity-item,
+  .settings-item {
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+  }
+}
+
 /* --- Responsive Design --- */
 @media (max-width: 768px) {
   .inj-pass-hero {
@@ -1592,6 +1646,11 @@ body {
   z-index: 10;
   transform: translateY(100vh);
   transition: transform 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  /* Android优化 */
+  -webkit-transform: translateY(100vh);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  will-change: transform;
 }
 
 .nfc-scan-container.active {
@@ -1604,10 +1663,16 @@ body {
   border-radius: 1.5rem;
   padding: 2rem;
   backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   box-shadow: 0 8px 32px rgba(76, 61, 255, 0.1);
   transform: scale(0.9);
+  -webkit-transform: scale(0.9);
   opacity: 0;
   transition: all 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  /* Android优化 */
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  will-change: transform, opacity;
 }
 
 .nfc-scan-container.active .nfc-scan-card {
@@ -1780,11 +1845,13 @@ body {
   0%,
   100% {
     transform: translate(-50%, -50%) scale(1);
+    -webkit-transform: translate(-50%, -50%) scale(1);
     opacity: 0.5;
   }
 
   50% {
     transform: translate(-50%, -50%) scale(1.1);
+    -webkit-transform: translate(-50%, -50%) scale(1.1);
     opacity: 1;
   }
 }
@@ -1792,10 +1859,12 @@ body {
 @keyframes scanRotate {
   0% {
     transform: translateX(-50%) rotate(0deg);
+    -webkit-transform: translateX(-50%) rotate(0deg);
   }
 
   100% {
     transform: translateX(-50%) rotate(360deg);
+    -webkit-transform: translateX(-50%) rotate(360deg);
   }
 }
 
@@ -1804,10 +1873,12 @@ body {
   0%,
   100% {
     transform: translate(-50%, -50%) translateY(0);
+    -webkit-transform: translate(-50%, -50%) translateY(0);
   }
 
   50% {
     transform: translate(-50%, -50%) translateY(-10px);
+    -webkit-transform: translate(-50%, -50%) translateY(-10px);
   }
 }
 
@@ -2018,11 +2089,16 @@ body {
   text-align: center;
   transition: all 0.3s ease;
   backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   position: relative;
   overflow: hidden;
   max-width: 400px;
   width: 100%;
   box-shadow: 0 8px 32px rgba(76, 61, 255, 0.1);
+  /* Android优化 */
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  will-change: transform;
 }
 
 .ecosystem-card::before {
@@ -2398,7 +2474,12 @@ body {
   border-radius: 1rem;
   padding: 1.5rem;
   backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   transition: all 0.3s ease;
+  /* Android优化 */
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  will-change: transform;
 }
 
 .activity-item:hover {
@@ -3346,6 +3427,10 @@ body {
   cursor: pointer;
   color: var(--secondary-text);
   transition: color 0.2s;
+  /* Android优化 */
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  will-change: color;
 }
 
 .tab-item.active {

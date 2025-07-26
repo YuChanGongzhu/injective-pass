@@ -73,6 +73,13 @@
       overflow-y: auto;
       min-height: 100vh;
       width: 100vw;
+      /* Android优化 */
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      -webkit-transform: translateZ(0);
+      transform: translateZ(0);
+      -webkit-backface-visibility: hidden;
+      backface-visibility: hidden;
     }
 
     /* --- Language Toggle --- */
@@ -518,22 +525,47 @@
       background: transparent;
       overflow-y: auto;
       overflow-x: hidden;
+      /* Android优化 */
+      -webkit-backface-visibility: hidden;
+      backface-visibility: hidden;
+      will-change: opacity;
     }
 
     .screen.active {
       display: flex;
+      /* Android优化：减少闪烁 */
+      opacity: 1;
+      transform: none;
+      -webkit-transform: none;
     }
 
     @keyframes fadeIn {
       from {
         opacity: 0;
         transform: scale(0.98);
+        -webkit-transform: scale(0.98);
       }
 
       to {
         opacity: 1;
         transform: scale(1);
+        -webkit-transform: scale(1);
       }
+    }
+
+    /* Android设备使用更简单的动画 */
+    .android-device .screen {
+      animation: none;
+      opacity: 1;
+      transform: none;
+      -webkit-transform: none;
+    }
+
+    .android-device .screen.active {
+      animation: none;
+      opacity: 1;
+      transform: none;
+      -webkit-transform: none;
     }
 
     /* --- Header Banner --- */
@@ -1270,6 +1302,29 @@
       box-shadow: 0 4px 12px rgba(76, 61, 255, 0.3);
     }
 
+    /* Android优化 */
+    @supports (-webkit-appearance: none) {
+      /* WebKit浏览器优化 */
+      .nfc-scan-container,
+      .ecosystem-card,
+      .activity-item,
+      .settings-item {
+        -webkit-transform: translateZ(0);
+        transform: translateZ(0);
+      }
+    }
+
+    /* Android Chrome优化 */
+    @media screen and (-webkit-min-device-pixel-ratio: 0) {
+      .nfc-scan-container,
+      .ecosystem-card,
+      .activity-item,
+      .settings-item {
+        -webkit-transform: translateZ(0);
+        transform: translateZ(0);
+      }
+    }
+
     /* --- Responsive Design --- */
     @media (max-width: 768px) {
       .inj-pass-hero {
@@ -1605,6 +1660,11 @@
       z-index: 10;
       transform: translateY(100vh);
       transition: transform 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+      /* Android优化 */
+      -webkit-transform: translateY(100vh);
+      -webkit-backface-visibility: hidden;
+      backface-visibility: hidden;
+      will-change: transform;
     }
 
     .nfc-scan-container.active {
@@ -1617,10 +1677,16 @@
       border-radius: 1.5rem;
       padding: 2rem;
       backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
       box-shadow: 0 8px 32px rgba(76, 61, 255, 0.1);
       transform: scale(0.9);
+      -webkit-transform: scale(0.9);
       opacity: 0;
       transition: all 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+      /* Android优化 */
+      -webkit-backface-visibility: hidden;
+      backface-visibility: hidden;
+      will-change: transform, opacity;
     }
 
     .nfc-scan-container.active .nfc-scan-card {
@@ -1793,11 +1859,13 @@
       0%,
       100% {
         transform: translate(-50%, -50%) scale(1);
+        -webkit-transform: translate(-50%, -50%) scale(1);
         opacity: 0.5;
       }
 
       50% {
         transform: translate(-50%, -50%) scale(1.1);
+        -webkit-transform: translate(-50%, -50%) scale(1.1);
         opacity: 1;
       }
     }
@@ -1805,10 +1873,12 @@
     @keyframes scanRotate {
       0% {
         transform: translateX(-50%) rotate(0deg);
+        -webkit-transform: translateX(-50%) rotate(0deg);
       }
 
       100% {
         transform: translateX(-50%) rotate(360deg);
+        -webkit-transform: translateX(-50%) rotate(360deg);
       }
     }
 
@@ -1817,10 +1887,12 @@
       0%,
       100% {
         transform: translate(-50%, -50%) translateY(0);
+        -webkit-transform: translate(-50%, -50%) translateY(0);
       }
 
       50% {
         transform: translate(-50%, -50%) translateY(-10px);
+        -webkit-transform: translate(-50%, -50%) translateY(-10px);
       }
     }
 
@@ -2031,11 +2103,16 @@
       text-align: center;
       transition: all 0.3s ease;
       backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
       position: relative;
       overflow: hidden;
       max-width: 400px;
       width: 100%;
       box-shadow: 0 8px 32px rgba(76, 61, 255, 0.1);
+      /* Android优化 */
+      -webkit-backface-visibility: hidden;
+      backface-visibility: hidden;
+      will-change: transform;
     }
 
     .ecosystem-card::before {
@@ -2411,7 +2488,12 @@
       border-radius: 1rem;
       padding: 1.5rem;
       backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
       transition: all 0.3s ease;
+      /* Android优化 */
+      -webkit-backface-visibility: hidden;
+      backface-visibility: hidden;
+      will-change: transform;
     }
 
     .activity-item:hover {
@@ -3359,6 +3441,10 @@
       cursor: pointer;
       color: var(--secondary-text);
       transition: color 0.2s;
+      /* Android优化 */
+      -webkit-backface-visibility: hidden;
+      backface-visibility: hidden;
+      will-change: color;
     }
 
     .tab-item.active {
@@ -4232,7 +4318,7 @@
 
         <div class="cat-mint-content">
           <div class="cat-preview" id="cat-preview" style="display: none;">
-            <img src="catdemo.png" alt="Cyber Cat" class="cat-image">
+            <img src="catdemo.jpg" alt="Cyber Cat" class="cat-image">
             <div class="cat-mint-success">
               <h3>铸造成功</h3>
               <p>每个人只能铸造一次</p>
@@ -4485,6 +4571,72 @@
     // 检测是否为Android设备
     function isAndroid() {
       return /Android/.test(navigator.userAgent);
+    }
+
+    // Android设备优化
+    function applyAndroidOptimizations() {
+      if (isAndroid()) {
+        // 添加Android特定的CSS类
+        document.body.classList.add('android-device');
+        
+        // 优化动画性能
+        const style = document.createElement('style');
+        style.textContent = `
+          .android-device * {
+            -webkit-transform: translateZ(0);
+            transform: translateZ(0);
+            -webkit-backface-visibility: hidden;
+            backface-visibility: hidden;
+          }
+          
+          .android-device .nfc-scan-container,
+          .android-device .ecosystem-card,
+          .android-device .activity-item,
+          .android-device .settings-item {
+            will-change: transform, opacity;
+          }
+          
+          .android-device .animated-background {
+            -webkit-transform: translateZ(0);
+            transform: translateZ(0);
+          }
+          
+          .android-device .screen {
+            opacity: 1 !important;
+            transform: none !important;
+            -webkit-transform: none !important;
+          }
+          
+          .android-device .screen.active {
+            opacity: 1 !important;
+            transform: none !important;
+            -webkit-transform: none !important;
+          }
+        `;
+        document.head.appendChild(style);
+      }
+    }
+
+    // 预加载屏幕内容以减少闪烁
+    function preloadScreenContent(screenId) {
+      const screen = document.getElementById(screenId);
+      if (screen && isAndroid()) {
+        // 强制重绘以减少闪烁
+        screen.style.opacity = '0.99';
+        setTimeout(() => {
+          screen.style.opacity = '1';
+        }, 10);
+      }
+    }
+
+    // 滚动到页面底部
+    function scrollToBottom() {
+      setTimeout(() => {
+        window.scrollTo({
+          top: document.body.scrollHeight,
+          behavior: 'smooth'
+        });
+      }, 200);
     }
 
     // 检测是否支持Passkey
@@ -4921,12 +5073,19 @@
         // Start auto flip animation when welcome screen is shown
         setTimeout(() => {
           startWelcomeScreenAnimation();
+          // 自动滚动到页面底部
+          scrollToBottom();
         }, 100);
       } else if (screenId === 'dashboard-screen') {
         // Start auto flip animation when dashboard screen is shown
         setTimeout(() => {
           startDashboardCardAnimation();
         }, 100);
+      } else if (['ecosystem-screen', 'activity-screen', 'settings-screen'].includes(screenId)) {
+        // Android优化：预加载内容以减少闪烁
+        setTimeout(() => {
+          preloadScreenContent(screenId);
+        }, 10);
       }
     }
 
@@ -5370,7 +5529,10 @@
         // Navigate to corresponding screen
         const screens = ['dashboard-screen', 'ecosystem-screen', 'activity-screen', 'settings-screen'];
         if (screens[index]) {
-          navigateTo(screens[index]);
+          // 添加延迟以减少闪烁
+          setTimeout(() => {
+            navigateTo(screens[index]);
+          }, 50);
         }
       });
     });
@@ -5536,6 +5698,7 @@
     // init
     applyI18n();
     initializeWalletState();
+    applyAndroidOptimizations();
 
     // Check if cat has been minted
     checkCatMinted();
@@ -5549,9 +5712,16 @@
       // Start auto flip animation when welcome screen is active
       setTimeout(() => {
         startWelcomeScreenAnimation();
+        // 首页自动滚动到底部
+        scrollToBottom();
       }, 100);
     }
   </script>
+  
+
+
+
+  
 </body>
 
 </html>
