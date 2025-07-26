@@ -4,7 +4,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const sendButton = document.getElementById('send-button');
     const loadingIndicator = document.getElementById('loading-indicator');
 
-    const API_BASE_URL = 'http://localhost:3000/api';
+    const API_BASE_URL = '/api';
     const CHAT_HISTORY_KEY = 'chatHistory';
 
     // 从localStorage加载聊天记录
