@@ -58,8 +58,8 @@ services:
       NFC_REGISTRY_ADDRESS: "0x775D0D30dc990b8068768CCE58ad47ff167700cf"
       DOMAIN_REGISTRY_ADDRESS: "0xf978481B334ba5572717c528ba730EF4A12DA191"
       CAT_NFT_ADDRESS: "0x049B99fc53a39e8eF6DC725EBA32f0FCd7053c22"
-    ports:
-      - "8080:3000"
+    # ports:
+    #   - "8080:3000" # This is commented out to make the API only accessible through Nginx
     volumes:
       - ./logs:/app/logs
     healthcheck:
@@ -76,11 +76,11 @@ services:
     depends_on:
       - api
     ports:
-      - "8001:80"
-      - "8443:443"
+      - "8080:80"      # Main HTTP access point
+      - "8443:443"   # Main HTTPS access point
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./ssl:/etc/nginx/ssl:ro
+      - ../front-end:/usr/share/nginx/html:ro
       - nginx_logs:/var/log/nginx
     environment:
       - NGINX_ENTRYPOINT_QUIET_LOGS=1
