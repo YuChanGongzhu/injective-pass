@@ -51,5 +51,21 @@ export declare class NFCService {
     private validateDomainPrefix;
     drawCatNFT(drawCatNFTDto: DrawCatNFTDto): Promise<CatNFTResponseDto>;
     getUserCatNFTs(uid: string): Promise<CatNFTListDto>;
+    getUserDomainNFT(uid: string): Promise<{
+        domain: string;
+        tokenId: string;
+        imageUrl: string;
+        metadata: any;
+        registeredAt: Date;
+        isActive: boolean;
+    }>;
+    manualBindNFC(uid: string): Promise<{
+        success: boolean;
+        message: string;
+        txHash?: string;
+        error?: string;
+    }>;
     private generateCatImageUrl;
+    private generateDomainImageUrl;
+    private generateDomainMetadata;
 }

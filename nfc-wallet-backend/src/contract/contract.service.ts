@@ -114,8 +114,8 @@ export class ContractService {
 
             // 发送注册交易
             const tx = await this.domainRegistryContract.mintDomainNFT(
-                domainSuffix, 
-                nfcUID, 
+                domainSuffix,
+                nfcUID,
                 metadataURI || '', {
                 value: registrationFee,
                 gasLimit: 500000

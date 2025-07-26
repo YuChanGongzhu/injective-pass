@@ -38,7 +38,7 @@ export class InjectiveService {
     private readonly endpoints: any;
     private readonly evmProvider: JsonRpcProvider;
     private readonly evmWallet: Wallet;
-    
+
     // 合约实例
     private nfcRegistryContract: Contract;
     private domainNFTContract: Contract;
@@ -50,12 +50,12 @@ export class InjectiveService {
             ? Network.Mainnet
             : Network.TestnetSentry;
         this.endpoints = getNetworkEndpoints(this.network);
-        
+
         // 初始化 EVM provider 和 wallet
         const rpcUrl = this.configService.get<string>('INJECTIVE_RPC_URL');
         this.evmProvider = new JsonRpcProvider(rpcUrl);
         this.evmWallet = new Wallet(this.masterPrivateKey, this.evmProvider);
-        
+
         // 初始化合约实例
         this.initializeContracts();
     }
@@ -473,7 +473,8 @@ export class InjectiveService {
         ownerAddress: string,
         domainName: string,
         nfcUID: string,
-        tokenId: string
+        tokenId: string,
+        metadata?: any
     ): Promise<{ success: boolean; txHash?: string; error?: string; rawTx?: any }> {
         try {
             if (!this.domainNFTContract) {
@@ -482,14 +483,18 @@ export class InjectiveService {
 
             // 提取域名前缀（移除.inj后缀）
             const domainPrefix = domainName.replace('.inj', '');
-            
+
+            // 使用统一的域名NFT图片URL
+            const metadataURI = 'https://bafybeih4nkltzoflarix3ghpjpemjyg2vcu2sywi4wku4uthhacs5uoh2a.ipfs.w3s.link/fir.png';
+
             // 调用合约的mintDomainNFT方法
             console.log(`开始铸造域名NFT: ${domainName} -> ${ownerAddress}, NFC: ${nfcUID}`);
-            
+            console.log(`使用元数据URI: ${metadataURI}`);
+
             const tx = await this.domainNFTContract.mintDomainNFT(
                 domainPrefix,
                 nfcUID,
-                '', // metadataURI 可以为空
+                metadataURI, // 使用统一的图片URL
                 {
                     gasLimit: 500000,
                     gasPrice: parseEther('0.00000002'), // 20 gwei
@@ -498,13 +503,13 @@ export class InjectiveService {
             );
 
             console.log(`域名NFT铸造交易已发送，交易哈希: ${tx.hash}`);
-            
+
             // 等待交易确认
             const receipt = await tx.wait();
-            
+
             if (receipt.status === 1) {
                 console.log(`域名NFT铸造成功: ${domainName} -> ${ownerAddress}, 交易哈希: ${tx.hash}`);
-                
+
                 return {
                     success: true,
                     txHash: tx.hash,
@@ -514,9 +519,12 @@ export class InjectiveService {
                         nfcUID: nfcUID,
                         tokenId: tokenId,
                         owner: ownerAddress,
+                        metadataURI: metadataURI,
+                        imageUrl: metadataURI, // 统一的图片URL
                         blockNumber: receipt.blockNumber,
                         gasUsed: receipt.gasUsed.toString(),
-                        timestamp: new Date().toISOString()
+                        timestamp: new Date().toISOString(),
+                        metadata: metadata || null
                     }
                 };
             } else {
@@ -544,7 +552,7 @@ export class InjectiveService {
             }
 
             console.log(`开始小猫NFT抽卡: ${catName} -> ${ownerAddress}`);
-            
+
             // 调用合约的drawCatNFT方法
             const tx = await this.catNFTContract.drawCatNFT(catName, {
                 gasLimit: 500000,
@@ -553,33 +561,33 @@ export class InjectiveService {
             });
 
             console.log(`小猫NFT抽卡交易已发送，交易哈希: ${tx.hash}`);
-            
+
             // 等待交易确认
             const receipt = await tx.wait();
-            
+
             if (receipt.status === 1) {
                 console.log(`小猫NFT抽卡成功: ${catName} -> ${ownerAddress}, 交易哈希: ${tx.hash}`);
-                
+
                 // 解析事件获取NFT信息
                 let rarity = 'R'; // 默认稀有度
                 let color = 'black'; // 默认颜色
                 let tokenId = '';
-                
+
                 console.log(`开始解析交易日志，总共${receipt.logs.length}条日志`);
-                
+
                 // 查找CatNFTMinted事件
                 for (const log of receipt.logs) {
                     try {
                         const parsedLog = this.catNFTContract.interface.parseLog(log);
                         console.log(`解析日志成功: ${parsedLog?.name || 'unknown'}`);
-                        
+
                         if (parsedLog && parsedLog.name === 'CatNFTMinted') {
                             tokenId = parsedLog.args.tokenId.toString();
                             const rarityIndex = parsedLog.args.rarity;
                             color = parsedLog.args.color;
-                            
+
                             console.log(`找到CatNFTMinted事件: tokenId=${tokenId}, rarity=${rarityIndex}, color=${color}`);
-                            
+
                             // 转换稀有度枚举
                             const rarityMap = ['R', 'SR', 'SSR', 'UR'];
                             rarity = rarityMap[rarityIndex] || 'R';
@@ -660,17 +668,17 @@ export class InjectiveService {
 
         try {
             console.log(`解绑NFC钱包: ${nfcUID}`);
-            
+
             const tx = await this.nfcRegistryContract.unbindNFCWallet(nfcUID, ownerSignature, {
                 gasLimit: 500000,
                 gasPrice: parseEther('0.00000002'), // 20 gwei
             });
 
             console.log(`解绑交易已发送，交易哈希: ${tx.hash}`);
-            
+
             // 等待交易确认
             const receipt = await tx.wait();
-            
+
             if (receipt.status === 1) {
                 console.log(`NFC解绑成功: ${nfcUID}, 交易哈希: ${tx.hash}`);
                 return tx.hash;
@@ -693,17 +701,17 @@ export class InjectiveService {
 
         try {
             console.log(`开始绑定空白NFC到链上: ${nfcUID} -> ${walletAddress}`);
-            
+
             const tx = await this.nfcRegistryContract.detectAndBindBlankCard(nfcUID, walletAddress, {
                 gasLimit: 500000,
                 gasPrice: parseEther('0.00000002'), // 20 gwei
             });
 
             console.log(`NFC绑定交易已发送，交易哈希: ${tx.hash}`);
-            
+
             // 等待交易确认
             const receipt = await tx.wait();
-            
+
             if (receipt.status === 1) {
                 console.log(`NFC绑定成功: ${nfcUID} -> ${walletAddress}, 交易哈希: ${tx.hash}`);
                 return {
@@ -732,17 +740,17 @@ export class InjectiveService {
 
         try {
             console.log(`紧急解绑NFC钱包: ${nfcUID}`);
-            
+
             const tx = await this.nfcRegistryContract.emergencyUnbindNFCWallet(nfcUID, {
                 gasLimit: 500000,
                 gasPrice: parseEther('0.00000002'), // 20 gwei
             });
 
             console.log(`紧急解绑交易已发送，交易哈希: ${tx.hash}`);
-            
+
             // 等待交易确认
             const receipt = await tx.wait();
-            
+
             if (receipt.status === 1) {
                 console.log(`NFC紧急解绑成功: ${nfcUID}, 交易哈希: ${tx.hash}`);
                 return tx.hash;

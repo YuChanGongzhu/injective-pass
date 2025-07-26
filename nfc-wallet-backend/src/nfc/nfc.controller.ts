@@ -324,6 +324,39 @@ export class NFCController {
         return this.nfcService.getUserCatNFTs(uid);
     }
 
+    @Get('domain/:uid')
+    @ApiOperation({
+        summary: '获取域名NFT详情',
+        description: '根据NFC UID获取用户的域名NFT详细信息，包含图片URL和元数据',
+    })
+    @ApiParam({
+        name: 'uid',
+        description: 'NFC卡片UID',
+        example: '04:f3:a1:8a:b2:5d:80:abc123',
+    })
+    @ApiResponse({
+        status: 200,
+        description: '成功获取域名NFT信息',
+        schema: {
+            type: 'object',
+            properties: {
+                domain: { type: 'string', example: 'advx-alice.inj' },
+                tokenId: { type: 'string', example: 'domain_1234567890_abc123' },
+                imageUrl: { type: 'string', example: 'https://bafybeih4nkltzoflarix3ghpjpemjyg2vcu2sywi4wku4uthhacs5uoh2a.ipfs.w3s.link/fir.png' },
+                metadata: { type: 'object' },
+                registeredAt: { type: 'string', format: 'date-time' },
+                isActive: { type: 'boolean', example: true }
+            }
+        }
+    })
+    @ApiResponse({
+        status: 404,
+        description: '未找到NFC卡片或域名NFT',
+    })
+    async getDomainNFT(@Param('uid') uid: string) {
+        return this.nfcService.getUserDomainNFT(uid);
+    }
+
 
 
 

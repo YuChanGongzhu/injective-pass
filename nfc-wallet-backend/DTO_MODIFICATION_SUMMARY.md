@@ -4,16 +4,16 @@
 
 ### 当前 DTO 文件及其作用
 
-| 文件名 | 作用 | 状态 |
-|--------|------|------|
+| 文件名                           | 作用                  | 状态       |
+| -------------------------------- | --------------------- | ---------- |
 | `card-ownership-response.dto.ts` | NFC卡片所有权历史跟踪 | ✅ 无需修改 |
-| `cat-nft.dto.ts` | 小猫NFT抽卡请求/响应 | 🔧 已修改 |
-| `domain-nft.dto.ts` | 域名NFT注册请求/响应 | 🔧 已修改 |
-| `nfc-status-response.dto.ts` | NFC卡片状态查询 | ✅ 无需修改 |
-| `register-nfc.dto.ts` | NFC注册和绑定请求 | ✅ 无需修改 |
-| `unbind-nfc.dto.ts` | NFC解绑请求 | ✅ 无需修改 |
-| `wallet-response.dto.ts` | 钱包信息和交易响应 | 🔧 已修改 |
-| `contract-query.dto.ts` | 合约查询相关 | ✨ 新增 |
+| `cat-nft.dto.ts`                 | 小猫NFT抽卡请求/响应  | 🔧 已修改   |
+| `domain-nft.dto.ts`              | 域名NFT注册请求/响应  | 🔧 已修改   |
+| `nfc-status-response.dto.ts`     | NFC卡片状态查询       | ✅ 无需修改 |
+| `register-nfc.dto.ts`            | NFC注册和绑定请求     | ✅ 无需修改 |
+| `unbind-nfc.dto.ts`              | NFC解绑请求           | ✅ 无需修改 |
+| `wallet-response.dto.ts`         | 钱包信息和交易响应    | 🔧 已修改   |
+| `contract-query.dto.ts`          | 合约查询相关          | ✨ 新增     |
 
 ## 🔧 主要修改内容
 

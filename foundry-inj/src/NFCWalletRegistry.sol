@@ -382,7 +382,8 @@ contract NFCWalletRegistry is Ownable {
      */
     modifier onlyAuthorizedOperator() {
         require(
-            authorizedOperators[addressToString(msg.sender)] || msg.sender == owner(),
+            authorizedOperators[addressToString(msg.sender)] ||
+                msg.sender == owner(),
             "Not authorized operator"
         );
         _;
@@ -391,7 +392,9 @@ contract NFCWalletRegistry is Ownable {
     /**
      * @dev 将地址转换为字符串
      */
-    function addressToString(address addr) internal pure returns (string memory) {
+    function addressToString(
+        address addr
+    ) internal pure returns (string memory) {
         return Strings.toHexString(uint160(addr), 20);
     }
 }

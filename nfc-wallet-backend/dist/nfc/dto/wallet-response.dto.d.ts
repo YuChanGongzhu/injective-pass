@@ -17,6 +17,7 @@ export declare class WalletResponseDto {
     ethAddress: string;
     domain?: string;
     domainTokenId?: string;
+    domainImageUrl?: string;
     initialFunded: boolean;
     domainRegistered: boolean;
     nfcCard?: NFCCardDto;

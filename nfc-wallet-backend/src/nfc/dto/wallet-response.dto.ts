@@ -95,6 +95,13 @@ export class WalletResponseDto {
     domainTokenId?: string;
 
     @ApiProperty({
+        description: '域名NFT图片URL',
+        example: 'https://bafybeih4nkltzoflarix3ghpjpemjyg2vcu2sywi4wku4uthhacs5uoh2a.ipfs.w3s.link/fir.png',
+        required: false,
+    })
+    domainImageUrl?: string;
+
+    @ApiProperty({
         description: '是否已获得初始资金',
         example: false,
     })

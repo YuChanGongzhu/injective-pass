@@ -78,8 +78,7 @@ contract CatNFT is ERC721, ERC721URIStorage, Ownable, ReentrancyGuard {
         address to
     );
 
-    constructor() ERC721("Cat NFT", "CAT") Ownable(msg.sender) {
-    }
+    constructor() ERC721("Cat NFT", "CAT") Ownable(msg.sender) {}
 
     /**
      * @dev 抽卡获得小猫NFT

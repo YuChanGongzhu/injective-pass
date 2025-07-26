@@ -244,11 +244,18 @@ export class NFCService {
 
         try {
             const domainTokenId = `domain_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+            // 生成域名NFT的元数据
+            const registeredAt = new Date();
+            const domainMetadata = this.generateDomainMetadata(fullDomain, registeredAt);
+            const imageUrl = this.generateDomainImageUrl(fullDomain);
+
             const mintResult = await this.injectiveService.mintDomainNFT(
                 nfcCard.user.address,
                 fullDomain,
                 uid, // Pass NFC UID to mintDomainNFT
-                domainTokenId
+                domainTokenId,
+                domainMetadata // 传入元数据
             );
 
             if (!mintResult.success) { throw new Error(`域名NFT铸造失败: ${mintResult.error}`); }
@@ -275,7 +282,13 @@ export class NFCService {
             });
 
             this.logger.log(`域名NFT注册成功: ${fullDomain} for UID: ${uid}`);
-            return { domain: fullDomain, tokenId: domainTokenId, txHash: mintResult.txHash, registeredAt: new Date() };
+            return {
+                domain: fullDomain,
+                tokenId: domainTokenId,
+                txHash: mintResult.txHash,
+                registeredAt: new Date(),
+                imageUrl: imageUrl
+            };
         } catch (error) {
             this.logger.error(`域名NFT注册失败:`, error.message);
             throw new BadRequestException(`域名NFT注册失败: ${error.message}`);
@@ -312,7 +325,7 @@ export class NFCService {
         try {
             // 调用Injective服务获取余额
             const balanceResult = await this.injectiveService.getAccountBalance(address);
-            
+
             return {
                 inj: balanceResult.inj || '0',
                 usd: balanceResult.usd || undefined // USD估值可以通过价格API获取
@@ -396,7 +409,7 @@ export class NFCService {
             // 调用链交互：紧急解绑（简化版本，实际可能需要用户签名）
             this.logger.log(`开始链上解绑NFC: ${uid}`);
             const txHash = await this.injectiveService.emergencyUnbindNFCWallet(uid);
-            
+
             // 删除本地数据库记录
             await this.prisma.nFCCard.delete({
                 where: { uid }
@@ -593,7 +606,7 @@ export class NFCService {
             // 优先使用合约返回的tokenId，否则使用交易哈希
             const contractTokenId = mintResult.rawTx?.tokenId;
             let finalTokenId: string;
-            
+
             if (contractTokenId && contractTokenId.trim() !== '' && contractTokenId !== '0') {
                 // 使用合约返回的真实tokenId
                 finalTokenId = contractTokenId;
@@ -698,6 +711,41 @@ export class NFCService {
         };
     }
 
+    /**
+     * 获取用户的域名NFT详情 (包含图片和元数据)
+     */
+    async getUserDomainNFT(uid: string) {
+        const nfcCard = await this.prisma.nFCCard.findUnique({
+            where: { uid },
+            include: { user: true }
+        });
+
+        if (!nfcCard) {
+            throw new NotFoundException('未找到对应的NFC卡片');
+        }
+
+        const user = nfcCard.user;
+        if (!user.domain || !user.domainRegistered) {
+            return null;
+        }
+
+        // 生成域名NFT的图片URL和元数据
+        const imageUrl = this.generateDomainImageUrl(user.domain);
+        const domainMetadata = this.generateDomainMetadata(
+            user.domain,
+            user.createdAt // 使用创建时间作为注册时间
+        );
+
+        return {
+            domain: user.domain,
+            tokenId: user.domainTokenId,
+            imageUrl: imageUrl,
+            metadata: domainMetadata,
+            registeredAt: user.createdAt,
+            isActive: true
+        };
+    }
+
 
 
     /**
@@ -723,7 +771,7 @@ export class NFCService {
         try {
             this.logger.log(`开始手动绑定NFC到链上: ${uid} -> ${nfcCard.user.address}`);
             const bindResult = await this.injectiveService.detectAndBindBlankCard(uid, nfcCard.user.address);
-            
+
             if (bindResult.success) {
                 this.logger.log(`手动绑定成功: ${uid}, 交易哈希: ${bindResult.txHash}`);
                 return {
@@ -752,18 +800,54 @@ export class NFCService {
      * 生成小猫图片URL
      */
     private generateCatImageUrl(color: string): string {
-        // 这里可以根据颜色返回对应的图片URL
-        // 在实际部署时，这些图片应该上传到IPFS或其他存储服务
+        // 使用实际的IPFS图片链接
         const imageMap = {
-            'black': 'https://example.com/images/cats/black-cat.png',
-            'green': 'https://example.com/images/cats/green-cat.png',
-            'red': 'https://example.com/images/cats/red-cat.png',
-            'orange': 'https://example.com/images/cats/orange-cat.png',
-            'purple': 'https://example.com/images/cats/purple-cat.png',
-            'blue': 'https://example.com/images/cats/blue-cat.png',
-            'rainbow': 'https://example.com/images/cats/rainbow-cat.png'
+            'black': 'https://bafybeieljhlspz52bir4cor4p3ww5zlo7ifyzdf2givip635kxgwpgnhmq.ipfs.w3s.link/black.png',
+            'green': 'https://bafybeifgbuvorq2o6uztzg3ekf2m3lezu2fh65aydttuavs2thy63zauja.ipfs.w3s.link/grow.png',
+            'red': 'https://bafybeiedm7slz2lszetnakzddshedf3oirgy2iqfvykzpx5qxp3kji4xpi.ipfs.w3s.link/red.png',
+            'orange': 'https://bafybeifm2mxuyfdituhty23ejoeojp23mpbyavsufg5hb2vwsxjftfzplu.ipfs.w3s.link/orange.png',
+            'purple': 'https://bafybeibmuw3eypvh4p5k33pquhkxmt7cktuobtjk7cm5fqgz2dl2ewpr24.ipfs.w3s.link/purple.png',
+            'blue': 'https://bafybeibirtf5cu6kacoukvplxneodjrak5dvpbi3pepjatwhjijyl5xca4.ipfs.w3s.link/blue.png',
+            'rainbow': 'https://bafybeibirtf5cu6kacoukvplxneodjrak5dvpbi3pepjatwhjijyl5xca4.ipfs.w3s.link/max.jpg'
         };
 
-        return imageMap[color] || 'https://example.com/images/cats/default-cat.png';
+        return imageMap[color] || 'https://bafybeieljhlspz52bir4cor4p3ww5zlo7ifyzdf2givip635kxgwpgnhmq.ipfs.w3s.link/black.png';
+    }
+
+    /**
+     * 生成域名NFT图片URL (统一使用固定图片)
+     */
+    private generateDomainImageUrl(domain: string): string {
+        // 所有域名NFT都使用统一的图片
+        return 'https://bafybeih4nkltzoflarix3ghpjpemjyg2vcu2sywi4wku4uthhacs5uoh2a.ipfs.w3s.link/fir.png';
+    }
+
+    /**
+     * 生成域名NFT元数据
+     */
+    private generateDomainMetadata(domain: string, registeredAt: Date): any {
+        return {
+            name: `INJ Domain: ${domain}`,
+            description: `Injective domain name NFT for ${domain}`,
+            image: this.generateDomainImageUrl(domain),
+            attributes: [
+                {
+                    trait_type: "Domain",
+                    value: domain
+                },
+                {
+                    trait_type: "TLD",
+                    value: ".inj"
+                },
+                {
+                    trait_type: "Registered At",
+                    value: registeredAt.toISOString()
+                },
+                {
+                    trait_type: "Type",
+                    value: "Domain NFT"
+                }
+            ]
+        };
     }
 }

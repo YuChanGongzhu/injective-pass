@@ -26,6 +26,14 @@ export declare class NFCController {
     }>;
     drawCatNFT(drawCatNFTDto: DrawCatNFTDto): Promise<CatNFTResponseDto>;
     getUserCatNFTs(uid: string): Promise<CatNFTListDto>;
+    getDomainNFT(uid: string): Promise<{
+        domain: string;
+        tokenId: string;
+        imageUrl: string;
+        metadata: any;
+        registeredAt: Date;
+        isActive: boolean;
+    }>;
 }
 export declare class ContractController {
     private readonly nfcService;
@@ -35,5 +43,13 @@ export declare class ContractController {
         domainNFT: boolean;
         catNFT: boolean;
         networkInfo: any;
+    }>;
+    manualBindNFC(body: {
+        uid: string;
+    }): Promise<{
+        success: boolean;
+        message: string;
+        txHash?: string;
+        error?: string;
     }>;
 }

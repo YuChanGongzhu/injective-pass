@@ -332,7 +332,9 @@ contract NFCWalletRegistryTest is Test {
         vm.stopPrank();
 
         // 获取绑定信息
-        NFCWalletRegistry.NFCBinding memory binding = registry.getNFCBinding(NFC_UID_1);
+        NFCWalletRegistry.NFCBinding memory binding = registry.getNFCBinding(
+            NFC_UID_1
+        );
         assertEq(binding.walletAddress, user1);
         assertTrue(binding.isActive);
         assertTrue(binding.isBlank);

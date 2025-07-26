@@ -22,7 +22,7 @@ contract DeployContracts is Script {
         // 3. Deploy CatNFT (no constructor parameters)
         CatNFT catNFT = new CatNFT();
         console.log("CatNFT deployed at:", address(catNFT));
-        
+
         console.log("=== Deployment Summary ===");
         console.log("NFCWalletRegistry:", address(nfcRegistry));
         console.log("INJDomainNFT:", address(domainNFT));

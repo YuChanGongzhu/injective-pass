@@ -66,6 +66,13 @@ __decorate([
     }),
     __metadata("design:type", Date)
 ], DomainNFTResponseDto.prototype, "registeredAt", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({
+        description: '域名NFT图片URL',
+        example: 'https://bafybeih4nkltzoflarix3ghpjpemjyg2vcu2sywi4wku4uthhacs5uoh2a.ipfs.w3s.link/fir.png',
+    }),
+    __metadata("design:type", String)
+], DomainNFTResponseDto.prototype, "imageUrl", void 0);
 class DomainAvailabilityDto {
 }
 exports.DomainAvailabilityDto = DomainAvailabilityDto;

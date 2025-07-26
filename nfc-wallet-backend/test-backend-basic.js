@@ -25,7 +25,7 @@ function makeRequest(options, data = null) {
         });
 
         req.on('error', reject);
-        
+
         if (data) {
             req.write(JSON.stringify(data));
         }
@@ -51,7 +51,7 @@ async function checkServiceRunning() {
 // 检查合约状态
 async function checkContractStatus() {
     console.log('🔍 检查合约状态...');
-    
+
     try {
         const response = await makeRequest({
             hostname: 'localhost',
@@ -59,17 +59,17 @@ async function checkContractStatus() {
             path: '/api/contract/status',
             method: 'GET'
         });
-        
+
         console.log('合约状态响应:', JSON.stringify(response.data, null, 2));
-        
+
         if (response.status === 200) {
             const { nfcRegistry, domainNFT, catNFT, networkInfo } = response.data;
-            
+
             console.log(`✅ NFC Registry: ${nfcRegistry ? '已连接' : '未连接'}`);
             console.log(`✅ Domain NFT: ${domainNFT ? '已连接' : '未连接'}`);
             console.log(`✅ Cat NFT: ${catNFT ? '已连接' : '未连接'}`);
             console.log('✅ Network Info:', networkInfo);
-            
+
             return nfcRegistry && domainNFT && catNFT;
         } else {
             console.log('❌ 合约状态检查失败');
@@ -84,10 +84,10 @@ async function checkContractStatus() {
 // 测试钱包生成
 async function testWalletGeneration() {
     console.log('\n💰 测试钱包生成...');
-    
+
     try {
         const testUID = '04:1a:2b:3c:4d:5e:6f:' + Date.now().toString(16);
-        
+
         const response = await makeRequest({
             hostname: 'localhost',
             port: 3000,
@@ -95,9 +95,9 @@ async function testWalletGeneration() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
         }, { uid: testUID });
-        
+
         console.log('钱包生成响应:', JSON.stringify(response.data, null, 2));
-        
+
         if (response.status === 201) {
             console.log('✅ 钱包生成成功');
             return response.data;
@@ -114,7 +114,7 @@ async function testWalletGeneration() {
 // 测试余额查询
 async function testBalanceQuery(address) {
     console.log('\n💳 测试余额查询...');
-    
+
     try {
         const response = await makeRequest({
             hostname: 'localhost',
@@ -122,9 +122,9 @@ async function testBalanceQuery(address) {
             path: `/api/nfc/balance/${address}`,
             method: 'GET'
         });
-        
+
         console.log('余额查询响应:', JSON.stringify(response.data, null, 2));
-        
+
         if (response.status === 200) {
             console.log('✅ 余额查询成功');
             return response.data;
@@ -141,7 +141,7 @@ async function testBalanceQuery(address) {
 // 主测试函数
 async function runBasicTests() {
     console.log('🚀 开始基础后端测试...\n');
-    
+
     // 1. 检查服务状态
     console.log('1️⃣ 检查后端服务状态...');
     const isRunning = await checkServiceRunning();
@@ -152,24 +152,24 @@ async function runBasicTests() {
         return;
     }
     console.log('✅ 后端服务正在运行');
-    
+
     // 2. 检查合约状态
     const contractsOk = await checkContractStatus();
     if (!contractsOk) {
         console.log('❌ 合约未正确初始化，请检查配置');
         return;
     }
-    
+
     // 3. 测试钱包生成
     const walletData = await testWalletGeneration();
     if (!walletData) {
         console.log('❌ 钱包生成测试失败');
         return;
     }
-    
+
     // 4. 测试余额查询
     const balanceData = await testBalanceQuery(walletData.address);
-    
+
     console.log('\n🎉 基础测试完成！');
     console.log('总结:');
     console.log('✅ 后端服务运行正常');

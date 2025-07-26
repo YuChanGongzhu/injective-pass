@@ -13,7 +13,8 @@ contract INJDomainNFTTest is Test {
 
     string public constant DOMAIN_PREFIX = "alice";
     string public constant NFC_UID = "04:1a:2b:3c:4d:5e:6f";
-    string public constant METADATA_URI = "https://example.com/metadata/domain.json";
+    string public constant METADATA_URI =
+        "https://example.com/metadata/domain.json";
 
     event DomainNFTMinted(
         uint256 indexed tokenId,
@@ -61,11 +62,7 @@ contract INJDomainNFTTest is Test {
         emit DomainNFTMinted(1, "alice.inj", user1, block.timestamp);
 
         // 铸造域名NFT
-        domainNFT.mintDomainNFT{value: 0}(
-            DOMAIN_PREFIX,
-            NFC_UID,
-            METADATA_URI
-        );
+        domainNFT.mintDomainNFT{value: 0}(DOMAIN_PREFIX, NFC_UID, METADATA_URI);
 
         // 验证NFT所有权
         assertEq(domainNFT.ownerOf(1), user1);
@@ -163,7 +160,11 @@ contract INJDomainNFTTest is Test {
     function testSetPrimaryDomain() public {
         vm.startPrank(user1);
         domainNFT.mintDomainNFT{value: 0}(DOMAIN_PREFIX, NFC_UID, METADATA_URI);
-        domainNFT.mintDomainNFT{value: 0}("bob", "04:2a:3b:4c:5d:6e:7f", METADATA_URI);
+        domainNFT.mintDomainNFT{value: 0}(
+            "bob",
+            "04:2a:3b:4c:5d:6e:7f",
+            METADATA_URI
+        );
 
         vm.expectEmit(true, true, true, true);
         emit PrimaryDomainSet(user1, 2, "bob.inj");

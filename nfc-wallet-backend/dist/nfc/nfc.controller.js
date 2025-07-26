@@ -57,6 +57,9 @@ let NFCController = class NFCController {
     async getUserCatNFTs(uid) {
         return this.nfcService.getUserCatNFTs(uid);
     }
+    async getDomainNFT(uid) {
+        return this.nfcService.getUserDomainNFT(uid);
+    }
 };
 exports.NFCController = NFCController;
 __decorate([
@@ -360,6 +363,41 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
 ], NFCController.prototype, "getUserCatNFTs", null);
+__decorate([
+    (0, common_1.Get)('domain/:uid'),
+    (0, swagger_1.ApiOperation)({
+        summary: '获取域名NFT详情',
+        description: '根据NFC UID获取用户的域名NFT详细信息，包含图片URL和元数据',
+    }),
+    (0, swagger_1.ApiParam)({
+        name: 'uid',
+        description: 'NFC卡片UID',
+        example: '04:f3:a1:8a:b2:5d:80:abc123',
+    }),
+    (0, swagger_1.ApiResponse)({
+        status: 200,
+        description: '成功获取域名NFT信息',
+        schema: {
+            type: 'object',
+            properties: {
+                domain: { type: 'string', example: 'advx-alice.inj' },
+                tokenId: { type: 'string', example: 'domain_1234567890_abc123' },
+                imageUrl: { type: 'string', example: 'https://bafybeih4nkltzoflarix3ghpjpemjyg2vcu2sywi4wku4uthhacs5uoh2a.ipfs.w3s.link/fir.png' },
+                metadata: { type: 'object' },
+                registeredAt: { type: 'string', format: 'date-time' },
+                isActive: { type: 'boolean', example: true }
+            }
+        }
+    }),
+    (0, swagger_1.ApiResponse)({
+        status: 404,
+        description: '未找到NFC卡片或域名NFT',
+    }),
+    __param(0, (0, common_1.Param)('uid')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], NFCController.prototype, "getDomainNFT", null);
 exports.NFCController = NFCController = __decorate([
     (0, swagger_1.ApiTags)('NFC钱包管理'),
     (0, common_1.Controller)('api/nfc'),
@@ -371,6 +409,9 @@ let ContractController = class ContractController {
     }
     async getContractStatus() {
         return this.nfcService.getContractStatus();
+    }
+    async manualBindNFC(body) {
+        return this.nfcService.manualBindNFC(body.uid);
     }
 };
 exports.ContractController = ContractController;
@@ -430,6 +471,42 @@ __decorate([
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", Promise)
 ], ContractController.prototype, "getContractStatus", null);
+__decorate([
+    (0, common_1.Post)('test/manual-bind'),
+    (0, swagger_1.ApiOperation)({
+        summary: '手动绑定NFC到链上（测试用）',
+        description: '手动将已注册的NFC卡片绑定到链上，用于测试解绑功能',
+    }),
+    (0, swagger_1.ApiBody)({
+        schema: {
+            type: 'object',
+            properties: {
+                uid: {
+                    type: 'string',
+                    description: 'NFC卡片UID',
+                    example: '04:dd:ee:ff'
+                }
+            },
+            required: ['uid']
+        }
+    }),
+    (0, swagger_1.ApiResponse)({
+        status: 200,
+        description: '手动绑定成功',
+        schema: {
+            type: 'object',
+            properties: {
+                success: { type: 'boolean' },
+                message: { type: 'string' },
+                txHash: { type: 'string' }
+            }
+        }
+    }),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], ContractController.prototype, "manualBindNFC", null);
 exports.ContractController = ContractController = __decorate([
     (0, swagger_1.ApiTags)('合约状态'),
     (0, common_1.Controller)('api/contract'),

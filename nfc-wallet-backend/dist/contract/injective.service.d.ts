@@ -55,7 +55,7 @@ export declare class InjectiveService {
         rpcUrl: string;
         restUrl: string;
     };
-    mintDomainNFT(ownerAddress: string, domainName: string, nfcUID: string, tokenId: string): Promise<{
+    mintDomainNFT(ownerAddress: string, domainName: string, nfcUID: string, tokenId: string, metadata?: any): Promise<{
         success: boolean;
         txHash?: string;
         error?: string;
@@ -76,5 +76,10 @@ export declare class InjectiveService {
         networkInfo: any;
     }>;
     unbindNFCWallet(nfcUID: string, ownerSignature: string): Promise<string>;
+    detectAndBindBlankCard(nfcUID: string, walletAddress: string): Promise<{
+        success: boolean;
+        txHash?: string;
+        error?: string;
+    }>;
     emergencyUnbindNFCWallet(nfcUID: string): Promise<string>;
 }

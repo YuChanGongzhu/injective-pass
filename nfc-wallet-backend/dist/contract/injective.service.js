@@ -314,14 +314,16 @@ let InjectiveService = class InjectiveService {
             restUrl: this.endpoints.rest
         };
     }
-    async mintDomainNFT(ownerAddress, domainName, nfcUID, tokenId) {
+    async mintDomainNFT(ownerAddress, domainName, nfcUID, tokenId, metadata) {
         try {
             if (!this.domainNFTContract) {
                 throw new Error('域名NFT合约未初始化');
             }
             const domainPrefix = domainName.replace('.inj', '');
+            const metadataURI = 'https://bafybeih4nkltzoflarix3ghpjpemjyg2vcu2sywi4wku4uthhacs5uoh2a.ipfs.w3s.link/fir.png';
             console.log(`开始铸造域名NFT: ${domainName} -> ${ownerAddress}, NFC: ${nfcUID}`);
-            const tx = await this.domainNFTContract.mintDomainNFT(domainPrefix, nfcUID, '', {
+            console.log(`使用元数据URI: ${metadataURI}`);
+            const tx = await this.domainNFTContract.mintDomainNFT(domainPrefix, nfcUID, metadataURI, {
                 gasLimit: 500000,
                 gasPrice: (0, ethers_1.parseEther)('0.00000002'),
                 value: 0
@@ -339,9 +341,12 @@ let InjectiveService = class InjectiveService {
                         nfcUID: nfcUID,
                         tokenId: tokenId,
                         owner: ownerAddress,
+                        metadataURI: metadataURI,
+                        imageUrl: metadataURI,
                         blockNumber: receipt.blockNumber,
                         gasUsed: receipt.gasUsed.toString(),
-                        timestamp: new Date().toISOString()
+                        timestamp: new Date().toISOString(),
+                        metadata: metadata || null
                     }
                 };
             }
@@ -467,6 +472,37 @@ let InjectiveService = class InjectiveService {
         catch (error) {
             console.error('解绑NFC钱包失败:', error);
             throw new Error(`解绑NFC钱包失败: ${error.message}`);
+        }
+    }
+    async detectAndBindBlankCard(nfcUID, walletAddress) {
+        if (!this.nfcRegistryContract) {
+            throw new Error('NFC注册表合约未初始化');
+        }
+        try {
+            console.log(`开始绑定空白NFC到链上: ${nfcUID} -> ${walletAddress}`);
+            const tx = await this.nfcRegistryContract.detectAndBindBlankCard(nfcUID, walletAddress, {
+                gasLimit: 500000,
+                gasPrice: (0, ethers_1.parseEther)('0.00000002'),
+            });
+            console.log(`NFC绑定交易已发送，交易哈希: ${tx.hash}`);
+            const receipt = await tx.wait();
+            if (receipt.status === 1) {
+                console.log(`NFC绑定成功: ${nfcUID} -> ${walletAddress}, 交易哈希: ${tx.hash}`);
+                return {
+                    success: true,
+                    txHash: tx.hash
+                };
+            }
+            else {
+                throw new Error('绑定交易失败');
+            }
+        }
+        catch (error) {
+            console.error('绑定空白NFC卡片失败:', error);
+            return {
+                success: false,
+                error: error.message
+            };
         }
     }
     async emergencyUnbindNFCWallet(nfcUID) {

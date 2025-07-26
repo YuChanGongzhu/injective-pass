@@ -7,6 +7,7 @@ export declare class DomainNFTResponseDto {
     tokenId: string;
     txHash: string;
     registeredAt: Date;
+    imageUrl: string;
 }
 export declare class DomainAvailabilityDto {
     domain: string;

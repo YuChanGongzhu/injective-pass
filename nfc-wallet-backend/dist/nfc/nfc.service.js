@@ -101,6 +101,21 @@ let NFCService = NFCService_1 = class NFCService {
             },
             include: { user: true }
         });
+        if (!userAddress) {
+            try {
+                this.logger.log(`开始链上绑定NFC: ${uid} -> ${user.address}`);
+                const bindResult = await this.injectiveService.detectAndBindBlankCard(uid, user.address);
+                if (bindResult.success) {
+                    this.logger.log(`链上绑定成功: ${uid}, 交易哈希: ${bindResult.txHash}`);
+                }
+                else {
+                    this.logger.warn(`链上绑定失败: ${uid}, 错误: ${bindResult.error}`);
+                }
+            }
+            catch (error) {
+                this.logger.warn(`链上绑定NFC失败: ${uid}, 错误: ${error.message}`);
+            }
+        }
         this.logger.log(`NFC卡片注册成功: ${uid} -> ${user.address}`);
         return this.buildWalletResponse(user, nfcCard, true, initialFundTxHash);
     }
@@ -186,7 +201,10 @@ let NFCService = NFCService_1 = class NFCService {
         }
         try {
             const domainTokenId = `domain_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-            const mintResult = await this.injectiveService.mintDomainNFT(nfcCard.user.address, fullDomain, uid, domainTokenId);
+            const registeredAt = new Date();
+            const domainMetadata = this.generateDomainMetadata(fullDomain, registeredAt);
+            const imageUrl = this.generateDomainImageUrl(fullDomain);
+            const mintResult = await this.injectiveService.mintDomainNFT(nfcCard.user.address, fullDomain, uid, domainTokenId, domainMetadata);
             if (!mintResult.success) {
                 throw new Error(`域名NFT铸造失败: ${mintResult.error}`);
             }
@@ -210,7 +228,13 @@ let NFCService = NFCService_1 = class NFCService {
                 rawTx: mintResult.rawTx
             });
             this.logger.log(`域名NFT注册成功: ${fullDomain} for UID: ${uid}`);
-            return { domain: fullDomain, tokenId: domainTokenId, txHash: mintResult.txHash, registeredAt: new Date() };
+            return {
+                domain: fullDomain,
+                tokenId: domainTokenId,
+                txHash: mintResult.txHash,
+                registeredAt: new Date(),
+                imageUrl: imageUrl
+            };
         }
         catch (error) {
             this.logger.error(`域名NFT注册失败:`, error.message);
@@ -513,17 +537,110 @@ let NFCService = NFCService_1 = class NFCService {
             totalPages: 1
         };
     }
+    async getUserDomainNFT(uid) {
+        const nfcCard = await this.prisma.nFCCard.findUnique({
+            where: { uid },
+            include: { user: true }
+        });
+        if (!nfcCard) {
+            throw new common_1.NotFoundException('未找到对应的NFC卡片');
+        }
+        const user = nfcCard.user;
+        if (!user.domain || !user.domainRegistered) {
+            return null;
+        }
+        const imageUrl = this.generateDomainImageUrl(user.domain);
+        const domainMetadata = this.generateDomainMetadata(user.domain, user.createdAt);
+        return {
+            domain: user.domain,
+            tokenId: user.domainTokenId,
+            imageUrl: imageUrl,
+            metadata: domainMetadata,
+            registeredAt: user.createdAt,
+            isActive: true
+        };
+    }
+    async manualBindNFC(uid) {
+        if (!this.validateUID(uid)) {
+            throw new common_1.BadRequestException('NFC UID格式无效');
+        }
+        const nfcCard = await this.prisma.nFCCard.findUnique({
+            where: { uid },
+            include: { user: true }
+        });
+        if (!nfcCard) {
+            return {
+                success: false,
+                message: 'NFC卡片不存在'
+            };
+        }
+        try {
+            this.logger.log(`开始手动绑定NFC到链上: ${uid} -> ${nfcCard.user.address}`);
+            const bindResult = await this.injectiveService.detectAndBindBlankCard(uid, nfcCard.user.address);
+            if (bindResult.success) {
+                this.logger.log(`手动绑定成功: ${uid}, 交易哈希: ${bindResult.txHash}`);
+                return {
+                    success: true,
+                    message: 'NFC手动绑定成功',
+                    txHash: bindResult.txHash
+                };
+            }
+            else {
+                return {
+                    success: false,
+                    message: 'NFC手动绑定失败',
+                    error: bindResult.error
+                };
+            }
+        }
+        catch (error) {
+            this.logger.error(`手动绑定NFC失败: ${uid}`, error.message);
+            return {
+                success: false,
+                message: 'NFC手动绑定失败',
+                error: error.message
+            };
+        }
+    }
     generateCatImageUrl(color) {
         const imageMap = {
-            'black': 'https://example.com/images/cats/black-cat.png',
-            'green': 'https://example.com/images/cats/green-cat.png',
-            'red': 'https://example.com/images/cats/red-cat.png',
-            'orange': 'https://example.com/images/cats/orange-cat.png',
-            'purple': 'https://example.com/images/cats/purple-cat.png',
-            'blue': 'https://example.com/images/cats/blue-cat.png',
-            'rainbow': 'https://example.com/images/cats/rainbow-cat.png'
+            'black': 'https://bafybeieljhlspz52bir4cor4p3ww5zlo7ifyzdf2givip635kxgwpgnhmq.ipfs.w3s.link/black.png',
+            'green': 'https://bafybeifgbuvorq2o6uztzg3ekf2m3lezu2fh65aydttuavs2thy63zauja.ipfs.w3s.link/grow.png',
+            'red': 'https://bafybeiedm7slz2lszetnakzddshedf3oirgy2iqfvykzpx5qxp3kji4xpi.ipfs.w3s.link/red.png',
+            'orange': 'https://bafybeifm2mxuyfdituhty23ejoeojp23mpbyavsufg5hb2vwsxjftfzplu.ipfs.w3s.link/orange.png',
+            'purple': 'https://bafybeibmuw3eypvh4p5k33pquhkxmt7cktuobtjk7cm5fqgz2dl2ewpr24.ipfs.w3s.link/purple.png',
+            'blue': 'https://bafybeibirtf5cu6kacoukvplxneodjrak5dvpbi3pepjatwhjijyl5xca4.ipfs.w3s.link/blue.png',
+            'rainbow': 'https://bafybeibirtf5cu6kacoukvplxneodjrak5dvpbi3pepjatwhjijyl5xca4.ipfs.w3s.link/max.jpg'
         };
-        return imageMap[color] || 'https://example.com/images/cats/default-cat.png';
+        return imageMap[color] || 'https://bafybeieljhlspz52bir4cor4p3ww5zlo7ifyzdf2givip635kxgwpgnhmq.ipfs.w3s.link/black.png';
+    }
+    generateDomainImageUrl(domain) {
+        return 'https://bafybeih4nkltzoflarix3ghpjpemjyg2vcu2sywi4wku4uthhacs5uoh2a.ipfs.w3s.link/fir.png';
+    }
+    generateDomainMetadata(domain, registeredAt) {
+        return {
+            name: `INJ Domain: ${domain}`,
+            description: `Injective domain name NFT for ${domain}`,
+            image: this.generateDomainImageUrl(domain),
+            attributes: [
+                {
+                    trait_type: "Domain",
+                    value: domain
+                },
+                {
+                    trait_type: "TLD",
+                    value: ".inj"
+                },
+                {
+                    trait_type: "Registered At",
+                    value: registeredAt.toISOString()
+                },
+                {
+                    trait_type: "Type",
+                    value: "Domain NFT"
+                }
+            ]
+        };
     }
 };
 exports.NFCService = NFCService;

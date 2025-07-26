@@ -45,6 +45,12 @@ export class DomainNFTResponseDto {
         example: '2023-01-01T00:00:00.000Z',
     })
     registeredAt: Date;
+
+    @ApiProperty({
+        description: '域名NFT图片URL',
+        example: 'https://bafybeih4nkltzoflarix3ghpjpemjyg2vcu2sywi4wku4uthhacs5uoh2a.ipfs.w3s.link/fir.png',
+    })
+    imageUrl: string;
 }
 
 export class DomainAvailabilityDto {

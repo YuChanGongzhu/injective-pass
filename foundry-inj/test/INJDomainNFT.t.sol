@@ -13,7 +13,8 @@ contract INJDomainNFTTest is Test {
 
     string public constant DOMAIN_PREFIX = "alice";
     string public constant NFC_UID = "04:1a:2b:3c:4d:5e:6f";
-    string public constant METADATA_URI = "https://example.com/metadata/domain.json";
+    string public constant METADATA_URI =
+        "https://example.com/metadata/domain.json";
 
     event DomainNFTMinted(
         uint256 indexed tokenId,
@@ -61,11 +62,7 @@ contract INJDomainNFTTest is Test {
         emit DomainNFTMinted(1, "advx-alice.inj", user1, block.timestamp);
 
         // 铸造域名NFT
-        domainNFT.mintDomainNFT{value: 0}(
-            DOMAIN_PREFIX,
-            NFC_UID,
-            METADATA_URI
-        );
+        domainNFT.mintDomainNFT{value: 0}(DOMAIN_PREFIX, NFC_UID, METADATA_URI);
 
         // 验证NFT所有权
         assertEq(domainNFT.ownerOf(1), user1);
@@ -79,7 +76,7 @@ contract INJDomainNFTTest is Test {
             bool isActive,
             string memory metadata
         ) = domainNFT.domainInfos(1);
-        
+
         assertEq(domainName, "advx-alice.inj");
         assertEq(domainOwner, user1);
         assertEq(nfcUID, NFC_UID);
@@ -101,7 +98,11 @@ contract INJDomainNFTTest is Test {
 
         // 测试过长的域名（超出MAX_DOMAIN_LENGTH-5的限制）
         vm.expectRevert("Invalid domain suffix");
-        domainNFT.mintDomainNFT{value: 0}("verylongdomainnamethatexceedsthelimit", NFC_UID, METADATA_URI);
+        domainNFT.mintDomainNFT{value: 0}(
+            "verylongdomainnamethatexceedsthelimit",
+            NFC_UID,
+            METADATA_URI
+        );
 
         // 测试空NFC UID
         vm.expectRevert("Invalid NFC UID");
@@ -153,7 +154,7 @@ contract INJDomainNFTTest is Test {
         // 验证转移后状态
         assertEq(domainNFT.ownerOf(1), user2);
         assertEq(domainNFT.nfcToTokenId(NFC_UID), 0); // NFC解绑
-        
+
         (, , , , bool isActive, ) = domainNFT.domainInfos(1);
         assertFalse(isActive); // 域名变为非激活状态
     }
@@ -174,7 +175,11 @@ contract INJDomainNFTTest is Test {
     function testSetPrimaryDomain() public {
         vm.startPrank(user1);
         domainNFT.mintDomainNFT{value: 0}(DOMAIN_PREFIX, NFC_UID, METADATA_URI);
-        domainNFT.mintDomainNFT{value: 0}("bob", "04:2a:3b:4c:5d:6e:7f", METADATA_URI);
+        domainNFT.mintDomainNFT{value: 0}(
+            "bob",
+            "04:2a:3b:4c:5d:6e:7f",
+            METADATA_URI
+        );
 
         vm.expectEmit(true, true, true, true);
         emit PrimaryDomainSet(user1, 2, "advx-bob.inj");
