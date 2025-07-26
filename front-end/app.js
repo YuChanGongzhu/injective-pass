@@ -537,7 +537,7 @@ async function handleNFCScan() {
 }
 
 // 配置后端 API 基础 URL
-const API_BASE_URL = 'http://localhost:3000';
+const API_BASE_URL = 'http://localhost:8080';
 
 // 真正的 API 客户端
 const apiClient = {
