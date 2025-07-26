@@ -536,14 +536,41 @@ async function handleNFCScan() {
     }
 }
 
-// 配置后端 API 基础 URL
-const API_BASE_URL = 'http://localhost:8080';
+// 配置后端 API 基础 URL - 动态适应不同环境
+const API_BASE_URL = (() => {
+    const currentHost = window.location.hostname;
+    const currentPort = window.location.port;
+    const currentProtocol = window.location.protocol;
+    
+    // 如果是 localhost 或 127.0.0.1，使用本地配置
+    if (currentHost === 'localhost' || currentHost === '127.0.0.1') {
+        return 'http://localhost:8080';
+    }
+    
+    // 如果是服务器环境，使用相同主机的8080端口
+    return `${currentProtocol}//${currentHost}:8080`;
+})();
 
 // 真正的 API 客户端
 const apiClient = {
+    // API 连接检测
+    checkApiConnection: async () => {
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/health`, {
+                method: 'GET',
+                timeout: 5000
+            });
+            return response.ok;
+        } catch (error) {
+            console.warn('API connection check failed:', error);
+            return false;
+        }
+    },
+
     // NFC 注册 API
     registerNFC: async (uid) => {
         try {
+            console.log(`Attempting NFC registration with API: ${API_BASE_URL}/api/nfc/register`);
             const response = await fetch(`${API_BASE_URL}/api/nfc/register`, {
                 method: 'POST',
                 headers: {
@@ -556,7 +583,9 @@ const apiClient = {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
 
-            return await response.json();
+            const result = await response.json();
+            console.log('NFC registration successful:', result);
+            return result;
         } catch (error) {
             console.error('NFC registration failed:', error);
             throw error;
@@ -651,6 +680,20 @@ const apiClient = {
     // 生成钱包（通过注册NFC实现）
     generateWallet: async (uid) => {
         try {
+            console.log('Generating wallet for UID:', uid);
+            console.log('Using API URL:', API_BASE_URL);
+            
+            // 首先检查API连接
+            const apiConnected = await apiClient.checkApiConnection();
+            if (!apiConnected) {
+                console.warn('API server not available, falling back to mock data');
+                // 回退到模拟数据
+                return {
+                    publicKey: 'inj1' + Math.random().toString(36).substr(2, 38),
+                    privateKey: 'hidden_for_security'
+                };
+            }
+            
             const result = await apiClient.registerNFC(uid);
             return {
                 publicKey: result.address,
@@ -658,10 +701,11 @@ const apiClient = {
             };
         } catch (error) {
             console.error('Generate wallet failed:', error);
+            console.log('Falling back to mock data');
             // 回退到模拟数据
             return {
                 publicKey: 'inj1' + Math.random().toString(36).substr(2, 38),
-                privateKey: '0x' + Array(64).join().replace(/(.|$)/g, () => (Math.random() * 16 | 0).toString(16)),
+                privateKey: 'hidden_for_security',
             };
         }
     },
@@ -669,6 +713,15 @@ const apiClient = {
     // 检查域名可用性
     checkDomainAvailability: async (domain) => {
         try {
+            console.log('Checking domain availability:', domain);
+            
+            // 首先检查API连接
+            const apiConnected = await apiClient.checkApiConnection();
+            if (!apiConnected) {
+                console.warn('API server not available, using mock response');
+                return Math.random() > 0.2; // 80%的概率可用
+            }
+            
             const response = await fetch(`${API_BASE_URL}/api/nfc/domain/check?domain=${encodeURIComponent(domain)}`);
 
             if (!response.ok) {
@@ -676,6 +729,7 @@ const apiClient = {
             }
 
             const result = await response.json();
+            console.log('Domain availability result:', result);
             return result.available;
         } catch (error) {
             console.error('Domain availability check failed:', error);

@@ -7,6 +7,7 @@ import { CryptoModule } from './crypto/crypto.module';
 import { ContractModule } from './contract/contract.module';
 import { ChatModule } from './chat/chat.module';
 import { ToolsModule } from './tools/tools.module';
+import { HealthController } from './health/health.controller';
 
 @Module({
     imports: [
@@ -22,5 +23,6 @@ import { ToolsModule } from './tools/tools.module';
         ChatModule,
         ToolsModule
     ],
+    controllers: [HealthController],
 })
 export class AppModule { } 
