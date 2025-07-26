@@ -5,6 +5,8 @@ import { NFCModule } from './nfc/nfc.module';
 import { UserModule } from './user/user.module';
 import { CryptoModule } from './crypto/crypto.module';
 import { ContractModule } from './contract/contract.module';
+import { ChatModule } from './chat/chat.module';
+import { ToolsModule } from './tools/tools.module';
 
 @Module({
     imports: [
@@ -17,6 +19,8 @@ import { ContractModule } from './contract/contract.module';
         ContractModule,
         NFCModule,
         UserModule,
+        ChatModule,
+        ToolsModule
     ],
 })
 export class AppModule { } 
