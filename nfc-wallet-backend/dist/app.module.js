@@ -14,6 +14,8 @@ const nfc_module_1 = require("./nfc/nfc.module");
 const user_module_1 = require("./user/user.module");
 const crypto_module_1 = require("./crypto/crypto.module");
 const contract_module_1 = require("./contract/contract.module");
+const chat_module_1 = require("./chat/chat.module");
+const tools_module_1 = require("./tools/tools.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -29,6 +31,8 @@ exports.AppModule = AppModule = __decorate([
             contract_module_1.ContractModule,
             nfc_module_1.NFCModule,
             user_module_1.UserModule,
+            chat_module_1.ChatModule,
+            tools_module_1.ToolsModule
         ],
     })
 ], AppModule);
