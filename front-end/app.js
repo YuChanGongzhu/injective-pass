@@ -556,11 +556,14 @@ const apiClient = {
     // API 连接检测
     checkApiConnection: async () => {
         try {
+            console.log(`Checking API connection: ${API_BASE_URL}/api/health`);
             const response = await fetch(`${API_BASE_URL}/api/health`, {
                 method: 'GET',
                 timeout: 5000
             });
-            return response.ok;
+            const isConnected = response.ok;
+            console.log(`API connection status: ${isConnected ? 'Connected' : 'Failed'}`);
+            return isConnected;
         } catch (error) {
             console.warn('API connection check failed:', error);
             return false;
