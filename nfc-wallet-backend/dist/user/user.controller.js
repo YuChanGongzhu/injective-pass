@@ -18,6 +18,7 @@ const swagger_1 = require("@nestjs/swagger");
 const user_service_1 = require("./user.service");
 const update_domain_dto_1 = require("./dto/update-domain.dto");
 const user_profile_dto_1 = require("./dto/user-profile.dto");
+const export_private_key_dto_1 = require("./dto/export-private-key.dto");
 let UserController = class UserController {
     constructor(userService) {
         this.userService = userService;
@@ -40,11 +41,8 @@ let UserController = class UserController {
     async getUserList(page, limit) {
         return this.userService.getUserList(page || 1, limit || 20);
     }
-    async exportPrivateKey(uid) {
-        return this.userService.exportPrivateKey(uid);
-    }
-    async exportPrivateKeyByAddress(body) {
-        return this.userService.exportPrivateKeyByAddress(body.address);
+    async exportPrivateKey(exportPrivateKeyDto) {
+        return this.userService.exportPrivateKey(exportPrivateKeyDto);
     }
 };
 exports.UserController = UserController;
@@ -233,28 +231,28 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], UserController.prototype, "getUserList", null);
 __decorate([
-    (0, common_1.Post)('export-private-key/:uid'),
-    (0, swagger_1.ApiOperation)({ summary: '导出私钥', description: '通过NFC UID导出用户私钥' }),
-    (0, swagger_1.ApiParam)({ name: 'uid', description: 'NFC UID', example: 'A1B2C3D4E5F67890' }),
-    (0, swagger_1.ApiResponse)({ status: 200, description: '导出成功' }),
-    (0, swagger_1.ApiResponse)({ status: 404, description: '用户不存在' }),
-    (0, swagger_1.ApiResponse)({ status: 500, description: '服务器错误' }),
-    __param(0, (0, common_1.Param)('uid')),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String]),
-    __metadata("design:returntype", Promise)
-], UserController.prototype, "exportPrivateKey", null);
-__decorate([
-    (0, common_1.Post)('export-private-key-by-address'),
-    (0, swagger_1.ApiOperation)({ summary: '通过地址导出私钥', description: '通过钱包地址导出用户私钥' }),
-    (0, swagger_1.ApiResponse)({ status: 200, description: '导出成功' }),
-    (0, swagger_1.ApiResponse)({ status: 404, description: '用户不存在' }),
-    (0, swagger_1.ApiResponse)({ status: 500, description: '服务器错误' }),
+    (0, common_1.Post)('export-private-key'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    (0, swagger_1.ApiOperation)({
+        summary: '导出用户私钥',
+        description: '导出指定NFC卡片对应的用户私钥。此操作存在安全风险，请谨慎使用。',
+    }),
+    (0, swagger_1.ApiResponse)({
+        status: 200,
+        description: '成功导出私钥',
+        type: export_private_key_dto_1.PrivateKeyResponseDto,
+    }),
+    (0, swagger_1.ApiBadRequestResponse)({
+        description: '请求参数无效或私钥解密失败',
+    }),
+    (0, swagger_1.ApiNotFoundResponse)({
+        description: '未找到对应的NFC卡片',
+    }),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object]),
+    __metadata("design:paramtypes", [export_private_key_dto_1.ExportPrivateKeyDto]),
     __metadata("design:returntype", Promise)
-], UserController.prototype, "exportPrivateKeyByAddress", null);
+], UserController.prototype, "exportPrivateKey", null);
 exports.UserController = UserController = __decorate([
     (0, swagger_1.ApiTags)('用户管理'),
     (0, common_1.Controller)('api/user'),

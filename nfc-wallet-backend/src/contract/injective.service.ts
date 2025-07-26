@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Wallet } from 'ethers';
+import { Wallet, Contract, JsonRpcProvider, parseEther, formatEther } from 'ethers';
 import {
     PrivateKey,
     TxRestApi,
@@ -17,12 +17,32 @@ import {
 } from '@injectivelabs/sdk-ts';
 import { BigNumberInWei, BigNumberInBase } from '@injectivelabs/utils';
 import { Network, getNetworkEndpoints } from '@injectivelabs/networks';
+import * as path from 'path';
+import * as fs from 'fs';
+
+// 合约 ABI 常量 - 直接读取源文件
+const NFCWalletRegistryABI = JSON.parse(
+    fs.readFileSync(path.join(__dirname, '../../src/contract/abis/NFCWalletRegistry.json'), 'utf8')
+).abi;
+const INJDomainNFTABI = JSON.parse(
+    fs.readFileSync(path.join(__dirname, '../../src/contract/abis/INJDomainNFT.json'), 'utf8')
+).abi;
+const CatNFTABI = JSON.parse(
+    fs.readFileSync(path.join(__dirname, '../../src/contract/abis/CatNFT.json'), 'utf8')
+).abi;
 
 @Injectable()
 export class InjectiveService {
     private readonly masterPrivateKey: string;
     private readonly network: Network;
     private readonly endpoints: any;
+    private readonly evmProvider: JsonRpcProvider;
+    private readonly evmWallet: Wallet;
+    
+    // 合约实例
+    private nfcRegistryContract: Contract;
+    private domainNFTContract: Contract;
+    private catNFTContract: Contract;
 
     constructor(private configService: ConfigService) {
         this.masterPrivateKey = this.configService.get<string>('CONTRACT_PRIVATE_KEY');
@@ -30,6 +50,54 @@ export class InjectiveService {
             ? Network.Mainnet
             : Network.TestnetSentry;
         this.endpoints = getNetworkEndpoints(this.network);
+        
+        // 初始化 EVM provider 和 wallet
+        const rpcUrl = this.configService.get<string>('INJECTIVE_RPC_URL');
+        this.evmProvider = new JsonRpcProvider(rpcUrl);
+        this.evmWallet = new Wallet(this.masterPrivateKey, this.evmProvider);
+        
+        // 初始化合约实例
+        this.initializeContracts();
+    }
+
+    /**
+     * 初始化合约实例
+     */
+    private initializeContracts() {
+        try {
+            const nfcRegistryAddress = this.configService.get<string>('NFC_REGISTRY_ADDRESS');
+            const domainRegistryAddress = this.configService.get<string>('DOMAIN_REGISTRY_ADDRESS');
+            const catNFTAddress = this.configService.get<string>('CAT_NFT_ADDRESS');
+
+            if (nfcRegistryAddress) {
+                this.nfcRegistryContract = new Contract(
+                    nfcRegistryAddress,
+                    NFCWalletRegistryABI,
+                    this.evmWallet
+                );
+                console.log(`NFCWalletRegistry 合约初始化成功: ${nfcRegistryAddress}`);
+            }
+
+            if (domainRegistryAddress) {
+                this.domainNFTContract = new Contract(
+                    domainRegistryAddress,
+                    INJDomainNFTABI,
+                    this.evmWallet
+                );
+                console.log(`INJDomainNFT 合约初始化成功: ${domainRegistryAddress}`);
+            }
+
+            if (catNFTAddress) {
+                this.catNFTContract = new Contract(
+                    catNFTAddress,
+                    CatNFTABI,
+                    this.evmWallet
+                );
+                console.log(`CatNFT 合约初始化成功: ${catNFTAddress}`);
+            }
+        } catch (error) {
+            console.error('合约初始化失败:', error);
+        }
     }
 
     /**
@@ -123,123 +191,63 @@ export class InjectiveService {
     }
 
     /**
-     * 给新用户发送初始资金（0.1 INJ）
-     * 专门用于空白卡激活流程
+     * 发送初始资金给新用户
      */
     async sendInitialFunds(
         recipientAddress: string,
         amount: string = '0.1'
     ): Promise<{ success: boolean; txHash?: string; error?: string }> {
         try {
-            console.log(`发送初始资金: ${amount} INJ to ${recipientAddress}`);
+            console.log(`开始发送初始资金: ${amount} INJ -> ${recipientAddress}`);
 
             // 检查主账户余额
-            const masterPrivateKey = PrivateKey.fromPrivateKey(this.masterPrivateKey);
-            const masterAddress = masterPrivateKey.toPublicKey().toAddress().toBech32();
-            console.log(`主账户地址: ${masterAddress}`);
+            const masterAddress = this.getWalletFromPrivateKey(this.masterPrivateKey).address;
+            const masterBalance = await this.getAccountBalance(masterAddress);
+            const requiredAmount = new BigNumberInBase(amount);
 
-            try {
-                const balance = await this.getAccountBalance(masterAddress);
-                console.log(`主账户余额: ${balance.inj} INJ`);
-
-                if (parseFloat(balance.inj) < parseFloat(amount)) {
-                    const error = `主账户余额不足: ${balance.inj} INJ < ${amount} INJ. 请向主账户 ${masterAddress} 发送测试网INJ代币`;
-                    console.error(error);
-                    return { success: false, error };
-                }
-            } catch (balanceError) {
-                console.warn(`无法获取主账户余额: ${balanceError.message}, 继续尝试发送交易...`);
+            if (new BigNumberInBase(masterBalance.inj).lt(requiredAmount)) {
+                return {
+                    success: false,
+                    error: `主账户余额不足: ${masterBalance.inj} INJ, 需要: ${amount} INJ`
+                };
             }
-
-            // 使用主账户发送资金
-            const result = await this.sendInjectiveTokens(
-                recipientAddress,
-                amount,
-                this.masterPrivateKey
-            );
-
-            if (result.success) {
-                console.log(`初始资金发送成功: ${amount} INJ to ${recipientAddress}, tx: ${result.txHash}`);
-            } else {
-                console.error(`初始资金发送失败: ${result.error}`);
-            }
-
-            return result;
-        } catch (error) {
-            console.error('Error sending initial funds:', error);
-            return {
-                success: false,
-                error: error.message
-            };
-        }
-    }
-
-    /**
-     * 发送INJ代币到指定地址（使用MsgBroadcasterWithPk简化流程）
-     */
-    async sendInjectiveTokens(
-        toAddress: string,
-        amount: string, // INJ数量，例如 "0.1"
-        fromPrivateKey?: string // 如果不提供，使用主账户私钥
-    ): Promise<{ success: boolean; txHash?: string; error?: string }> {
-        try {
-            const privateKey = fromPrivateKey || this.masterPrivateKey;
-            if (!privateKey) {
-                throw new Error('No private key available');
-            }
-
-            console.log(`Sending ${amount} INJ to ${toAddress}`);
-
-            // 确保私钥格式正确（需要0x前缀）
-            const formattedPrivateKey = privateKey.startsWith('0x') ? privateKey : `0x${privateKey}`;
-
-            // 获取发送方地址
-            const privateKeyObj = PrivateKey.fromPrivateKey(formattedPrivateKey);
-            const senderAddress = privateKeyObj.toPublicKey().toAddress().toBech32();
-
-            console.log(`发送方地址: ${senderAddress}`);
-
-            // 确保接收地址是Injective格式
-            const recipientAddress = toAddress.startsWith('inj')
-                ? toAddress
-                : getInjectiveAddress(toAddress);
-
-            // 准备金额（转换为Wei格式）
-            const amountInWei = new BigNumberInBase(amount).toWei().toFixed();
-            console.log(`转换后的金额: ${amountInWei} wei`);
 
             // 创建MsgSend消息
             const msg = MsgSend.fromJSON({
                 amount: {
-                    amount: amountInWei,
-                    denom: 'inj'
+                    denom: 'inj',
+                    amount: new BigNumberInBase(amount).toWei().toFixed()
                 },
-                srcInjectiveAddress: senderAddress,
+                srcInjectiveAddress: masterAddress,
                 dstInjectiveAddress: recipientAddress
             });
 
             // 使用MsgBroadcasterWithPk发送交易
             const broadcaster = new MsgBroadcasterWithPk({
-                privateKey: formattedPrivateKey,
-                network: this.network
+                privateKey: this.masterPrivateKey,
+                network: this.network,
+                endpoints: this.endpoints
             });
-
-            console.log(`使用网络: ${this.network}, Chain ID: ${this.getChainId()}`);
 
             const txResponse = await broadcaster.broadcast({
-                msgs: msg,
-                memo: 'NFC Wallet Initial Funding'
+                msgs: msg
             });
 
-            console.log(`Successfully sent ${amount} INJ to ${recipientAddress}, tx: ${txResponse.txHash}`);
-
-            return {
-                success: true,
-                txHash: txResponse.txHash
-            };
-
+            if (txResponse.code === 0) {
+                console.log(`初始资金发送成功: ${recipientAddress}, tx: ${txResponse.txHash}`);
+                return {
+                    success: true,
+                    txHash: txResponse.txHash
+                };
+            } else {
+                console.error(`初始资金发送失败: ${txResponse.rawLog}`);
+                return {
+                    success: false,
+                    error: `交易失败: ${txResponse.rawLog}`
+                };
+            }
         } catch (error) {
-            console.error('Error sending Injective tokens:', error);
+            console.error('发送初始资金失败:', error);
             return {
                 success: false,
                 error: error.message
@@ -248,7 +256,80 @@ export class InjectiveService {
     }
 
     /**
- * 查询账户余额
+     * 发送INJ代币
+     */
+    async sendInjectiveTokens(
+        toAddress: string,
+        amount: string, // INJ数量，例如 "0.1"
+        fromPrivateKey?: string // 如果不提供，使用主账户私钥
+    ): Promise<{ success: boolean; txHash?: string; error?: string; rawTx?: any }> {
+        try {
+            const privateKey = fromPrivateKey || this.masterPrivateKey;
+
+            // 检查主账户余额
+            const masterAddress = this.getWalletFromPrivateKey(privateKey).address;
+            const masterBalance = await this.getAccountBalance(masterAddress);
+            const requiredAmount = new BigNumberInBase(amount);
+
+            if (new BigNumberInBase(masterBalance.inj).lt(requiredAmount)) {
+                return {
+                    success: false,
+                    error: `主账户余额不足: ${masterBalance.inj} INJ, 需要: ${amount} INJ`
+                };
+            }
+
+            // 创建MsgSend消息
+            const msg = MsgSend.fromJSON({
+                amount: {
+                    denom: 'inj',
+                    amount: new BigNumberInBase(amount).toWei().toFixed()
+                },
+                srcInjectiveAddress: masterAddress,
+                dstInjectiveAddress: toAddress
+            });
+
+            // 使用MsgBroadcasterWithPk发送交易
+            const broadcaster = new MsgBroadcasterWithPk({
+                privateKey: privateKey,
+                network: this.network,
+                endpoints: this.endpoints
+            });
+
+            const txResponse = await broadcaster.broadcast({
+                msgs: msg
+            });
+
+            if (txResponse.code === 0) {
+                return {
+                    success: true,
+                    txHash: txResponse.txHash,
+                    rawTx: {
+                        type: 'SEND',
+                        from: masterAddress,
+                        to: toAddress,
+                        amount: amount,
+                        denom: 'inj',
+                        txHash: txResponse.txHash,
+                        timestamp: new Date().toISOString()
+                    }
+                };
+            } else {
+                return {
+                    success: false,
+                    error: `交易失败: ${txResponse.rawLog}`
+                };
+            }
+        } catch (error) {
+            console.error('发送INJ代币失败:', error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+
+    /**
+     * 获取账户余额
  */
     async getAccountBalance(address: string): Promise<{
         inj: string;
@@ -384,4 +465,293 @@ export class InjectiveService {
             restUrl: this.endpoints.rest
         };
     }
-} 
+
+    /**
+     * 铸造域名NFT (与NFC绑定)
+     */
+    async mintDomainNFT(
+        ownerAddress: string,
+        domainName: string,
+        nfcUID: string,
+        tokenId: string
+    ): Promise<{ success: boolean; txHash?: string; error?: string; rawTx?: any }> {
+        try {
+            if (!this.domainNFTContract) {
+                throw new Error('域名NFT合约未初始化');
+            }
+
+            // 提取域名前缀（移除.inj后缀）
+            const domainPrefix = domainName.replace('.inj', '');
+            
+            // 调用合约的mintDomainNFT方法
+            console.log(`开始铸造域名NFT: ${domainName} -> ${ownerAddress}, NFC: ${nfcUID}`);
+            
+            const tx = await this.domainNFTContract.mintDomainNFT(
+                domainPrefix,
+                nfcUID,
+                '', // metadataURI 可以为空
+                {
+                    gasLimit: 500000,
+                    gasPrice: parseEther('0.00000002'), // 20 gwei
+                    value: 0 // registrationFee 设置为0
+                }
+            );
+
+            console.log(`域名NFT铸造交易已发送，交易哈希: ${tx.hash}`);
+            
+            // 等待交易确认
+            const receipt = await tx.wait();
+            
+            if (receipt.status === 1) {
+                console.log(`域名NFT铸造成功: ${domainName} -> ${ownerAddress}, 交易哈希: ${tx.hash}`);
+                
+                return {
+                    success: true,
+                    txHash: tx.hash,
+                    rawTx: {
+                        type: 'DOMAIN_NFT_MINT',
+                        domain: domainName,
+                        nfcUID: nfcUID,
+                        tokenId: tokenId,
+                        owner: ownerAddress,
+                        blockNumber: receipt.blockNumber,
+                        gasUsed: receipt.gasUsed.toString(),
+                        timestamp: new Date().toISOString()
+                    }
+                };
+            } else {
+                throw new Error('交易失败');
+            }
+        } catch (error) {
+            console.error('域名NFT铸造失败:', error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+
+    /**
+     * 铸造小猫NFT (抽卡)
+     */
+    async mintCatNFT(
+        ownerAddress: string,
+        catName: string
+    ): Promise<{ success: boolean; txHash?: string; error?: string; rawTx?: any; rarity?: string; color?: string }> {
+        try {
+            if (!this.catNFTContract) {
+                throw new Error('小猫NFT合约未初始化');
+            }
+
+            console.log(`开始小猫NFT抽卡: ${catName} -> ${ownerAddress}`);
+            
+            // 调用合约的drawCatNFT方法
+            const tx = await this.catNFTContract.drawCatNFT(catName, {
+                gasLimit: 500000,
+                gasPrice: parseEther('0.00000002'), // 20 gwei
+                value: parseEther('0.1') // 抽卡费用 0.1 INJ
+            });
+
+            console.log(`小猫NFT抽卡交易已发送，交易哈希: ${tx.hash}`);
+            
+            // 等待交易确认
+            const receipt = await tx.wait();
+            
+            if (receipt.status === 1) {
+                console.log(`小猫NFT抽卡成功: ${catName} -> ${ownerAddress}, 交易哈希: ${tx.hash}`);
+                
+                // 解析事件获取NFT信息
+                let rarity = 'R'; // 默认稀有度
+                let color = 'black'; // 默认颜色
+                let tokenId = '';
+                
+                console.log(`开始解析交易日志，总共${receipt.logs.length}条日志`);
+                
+                // 查找CatNFTMinted事件
+                for (const log of receipt.logs) {
+                    try {
+                        const parsedLog = this.catNFTContract.interface.parseLog(log);
+                        console.log(`解析日志成功: ${parsedLog?.name || 'unknown'}`);
+                        
+                        if (parsedLog && parsedLog.name === 'CatNFTMinted') {
+                            tokenId = parsedLog.args.tokenId.toString();
+                            const rarityIndex = parsedLog.args.rarity;
+                            color = parsedLog.args.color;
+                            
+                            console.log(`找到CatNFTMinted事件: tokenId=${tokenId}, rarity=${rarityIndex}, color=${color}`);
+                            
+                            // 转换稀有度枚举
+                            const rarityMap = ['R', 'SR', 'SSR', 'UR'];
+                            rarity = rarityMap[rarityIndex] || 'R';
+                            break;
+                        }
+                    } catch (e) {
+                        console.log(`日志解析失败:`, e.message);
+                    }
+                }
+
+                console.log(`最终解析结果: tokenId="${tokenId}", rarity="${rarity}", color="${color}"`);
+
+                return {
+                    success: true,
+                    txHash: tx.hash,
+                    rarity,
+                    color,
+                    rawTx: {
+                        type: 'CAT_NFT_MINT',
+                        name: catName,
+                        tokenId: tokenId,
+                        rarity: rarity,
+                        color: color,
+                        owner: ownerAddress,
+                        blockNumber: receipt.blockNumber,
+                        gasUsed: receipt.gasUsed.toString(),
+                        timestamp: new Date().toISOString()
+                    }
+                };
+            } else {
+                throw new Error('交易失败');
+            }
+        } catch (error) {
+            console.error('小猫NFT抽卡失败:', error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+
+
+
+    /**
+     * 获取合约状态信息
+     */
+    async getContractStatus(): Promise<{
+        nfcRegistry: boolean;
+        domainNFT: boolean;
+        catNFT: boolean;
+        networkInfo: any;
+    }> {
+        try {
+            return {
+                nfcRegistry: !!this.nfcRegistryContract,
+                domainNFT: !!this.domainNFTContract,
+                catNFT: !!this.catNFTContract,
+                networkInfo: this.getNetworkInfo()
+            };
+        } catch (error) {
+            console.error('获取合约状态失败:', error);
+            return {
+                nfcRegistry: false,
+                domainNFT: false,
+                catNFT: false,
+                networkInfo: null
+            };
+        }
+    }
+
+    /**
+     * 解绑NFC钱包（需要所有者签名）
+     */
+    async unbindNFCWallet(nfcUID: string, ownerSignature: string): Promise<string> {
+        if (!this.nfcRegistryContract) {
+            throw new Error('NFC注册表合约未初始化');
+        }
+
+        try {
+            console.log(`解绑NFC钱包: ${nfcUID}`);
+            
+            const tx = await this.nfcRegistryContract.unbindNFCWallet(nfcUID, ownerSignature, {
+                gasLimit: 500000,
+                gasPrice: parseEther('0.00000002'), // 20 gwei
+            });
+
+            console.log(`解绑交易已发送，交易哈希: ${tx.hash}`);
+            
+            // 等待交易确认
+            const receipt = await tx.wait();
+            
+            if (receipt.status === 1) {
+                console.log(`NFC解绑成功: ${nfcUID}, 交易哈希: ${tx.hash}`);
+                return tx.hash;
+            } else {
+                throw new Error('解绑交易失败');
+            }
+        } catch (error) {
+            console.error('解绑NFC钱包失败:', error);
+            throw new Error(`解绑NFC钱包失败: ${error.message}`);
+        }
+    }
+
+    /**
+     * 检测并绑定空白NFC卡片到链上
+     */
+    async detectAndBindBlankCard(nfcUID: string, walletAddress: string): Promise<{ success: boolean; txHash?: string; error?: string }> {
+        if (!this.nfcRegistryContract) {
+            throw new Error('NFC注册表合约未初始化');
+        }
+
+        try {
+            console.log(`开始绑定空白NFC到链上: ${nfcUID} -> ${walletAddress}`);
+            
+            const tx = await this.nfcRegistryContract.detectAndBindBlankCard(nfcUID, walletAddress, {
+                gasLimit: 500000,
+                gasPrice: parseEther('0.00000002'), // 20 gwei
+            });
+
+            console.log(`NFC绑定交易已发送，交易哈希: ${tx.hash}`);
+            
+            // 等待交易确认
+            const receipt = await tx.wait();
+            
+            if (receipt.status === 1) {
+                console.log(`NFC绑定成功: ${nfcUID} -> ${walletAddress}, 交易哈希: ${tx.hash}`);
+                return {
+                    success: true,
+                    txHash: tx.hash
+                };
+            } else {
+                throw new Error('绑定交易失败');
+            }
+        } catch (error) {
+            console.error('绑定空白NFC卡片失败:', error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+
+    /**
+     * 紧急解绑NFC钱包（仅限授权操作者）
+     */
+    async emergencyUnbindNFCWallet(nfcUID: string): Promise<string> {
+        if (!this.nfcRegistryContract) {
+            throw new Error('NFC注册表合约未初始化');
+        }
+
+        try {
+            console.log(`紧急解绑NFC钱包: ${nfcUID}`);
+            
+            const tx = await this.nfcRegistryContract.emergencyUnbindNFCWallet(nfcUID, {
+                gasLimit: 500000,
+                gasPrice: parseEther('0.00000002'), // 20 gwei
+            });
+
+            console.log(`紧急解绑交易已发送，交易哈希: ${tx.hash}`);
+            
+            // 等待交易确认
+            const receipt = await tx.wait();
+            
+            if (receipt.status === 1) {
+                console.log(`NFC紧急解绑成功: ${nfcUID}, 交易哈希: ${tx.hash}`);
+                return tx.hash;
+            } else {
+                throw new Error('紧急解绑交易失败');
+            }
+        } catch (error) {
+            console.error('紧急解绑NFC钱包失败:', error);
+            throw new Error(`紧急解绑NFC钱包失败: ${error.message}`);
+        }
+    }
+}

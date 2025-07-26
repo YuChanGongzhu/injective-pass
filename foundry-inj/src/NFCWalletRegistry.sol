@@ -6,7 +6,7 @@ import "@openzeppelin/contracts/utils/Strings.sol";
 
 /**
  * @title NFCWalletRegistry
- * @dev NFC钱包注册系统，记录NFC UID与钱包地址的映射关系
+ * @dev NFC钱包注册系统，实现账户与NFC卡片的一一对应关系
  * 提供链上透明度和审计追踪
  */
 contract NFCWalletRegistry is Ownable {
@@ -25,7 +25,7 @@ contract NFCWalletRegistry is Ownable {
     // 状态变量
     mapping(string => NFCBinding) public nfcBindings; // NFC UID -> 当前绑定信息
     mapping(string => NFCBinding[]) public nfcHistory; // NFC UID -> 历史绑定记录
-    mapping(address => string[]) public walletToNFCs; // 钱包地址 -> 活跃NFC UID列表
+    mapping(address => string) public walletToNFC; // 钱包地址 -> 绑定的NFC UID (一一对应)
     mapping(string => bool) public authorizedOperators; // 授权的操作者 (后端服务)
 
     uint256 public totalBindings; // 总绑定数量
@@ -70,37 +70,7 @@ contract NFCWalletRegistry is Ownable {
     constructor() Ownable(msg.sender) {}
 
     /**
-     * @dev 绑定NFC UID到钱包地址
-     * @param nfcUID NFC卡片的唯一标识符
-     * @param walletAddress 钱包地址
-     */
-    function bindNFCWallet(
-        string memory nfcUID,
-        address walletAddress
-    ) external onlyAuthorizedOperator {
-        require(bytes(nfcUID).length > 0, "Invalid NFC UID");
-        require(walletAddress != address(0), "Invalid wallet address");
-        require(!isNFCBound(nfcUID), "NFC already bound");
-
-        // 创建绑定记录
-        nfcBindings[nfcUID] = NFCBinding({
-            walletAddress: walletAddress,
-            boundAt: block.timestamp,
-            unboundAt: 0,
-            isActive: true,
-            isBlank: false,
-            metadata: ""
-        });
-
-        // 更新钱包到NFC的映射
-        walletToNFCs[walletAddress].push(nfcUID);
-        totalBindings++;
-
-        emit NFCWalletBound(nfcUID, walletAddress, block.timestamp);
-    }
-
-    /**
-     * @dev 检测空白卡并自动创建账户
+     * @dev 检测空白卡并自动创建账户（一一对应绑定）
      * @param nfcUID NFC卡片的唯一标识符
      * @param newWalletAddress 为该卡片新创建的钱包地址
      * @return 是否为空白卡并成功绑定
@@ -117,6 +87,11 @@ contract NFCWalletRegistry is Ownable {
             return false; // 不是空白卡
         }
 
+        // 检查钱包是否已经绑定其他NFC卡片
+        if (bytes(walletToNFC[newWalletAddress]).length > 0) {
+            return false; // 钱包已绑定其他NFC卡片
+        }
+
         // 创建绑定记录，标记为空白卡初始状态
         nfcBindings[nfcUID] = NFCBinding({
             walletAddress: newWalletAddress,
@@ -130,8 +105,8 @@ contract NFCWalletRegistry is Ownable {
         // 添加到历史记录
         nfcHistory[nfcUID].push(nfcBindings[nfcUID]);
 
-        // 添加到钱包的NFC列表
-        walletToNFCs[newWalletAddress].push(nfcUID);
+        // 建立钱包到NFC的一一对应关系
+        walletToNFC[newWalletAddress] = nfcUID;
         totalBindings++;
 
         emit BlankCardDetected(nfcUID, newWalletAddress, block.timestamp);
@@ -213,8 +188,8 @@ contract NFCWalletRegistry is Ownable {
             "Invalid signature"
         );
 
-        // 从钱包的NFC列表中移除
-        _removeNFCFromWallet(walletAddress, nfcUID);
+        // 清除钱包到NFC的映射关系
+        delete walletToNFC[walletAddress];
 
         // 更新绑定记录状态而不是删除
         binding.isActive = false;
@@ -238,8 +213,8 @@ contract NFCWalletRegistry is Ownable {
         NFCBinding storage binding = nfcBindings[nfcUID];
         address walletAddress = binding.walletAddress;
 
-        // 从钱包的NFC列表中移除
-        _removeNFCFromWallet(walletAddress, nfcUID);
+        // 清除钱包到NFC的映射关系
+        delete walletToNFC[walletAddress];
 
         // 更新绑定记录状态而不是删除
         binding.isActive = false;
@@ -279,61 +254,23 @@ contract NFCWalletRegistry is Ownable {
     }
 
     /**
-     * @dev 获取钱包绑定的所有活跃NFC卡片
+     * @dev 获取钱包绑定的NFC卡片（一一对应关系）
      * @param walletAddress 钱包地址
-     * @return NFC UID数组
+     * @return 绑定的NFC UID，如果未绑定则返回空字符串
      */
-    function getWalletActiveNFCs(
+    function getWalletNFC(
         address walletAddress
-    ) external view returns (string[] memory) {
-        string[] memory allNFCs = walletToNFCs[walletAddress];
-        uint256 activeCount = 0;
-
-        // 先统计活跃的卡片数量
-        for (uint256 i = 0; i < allNFCs.length; i++) {
-            if (nfcBindings[allNFCs[i]].isActive) {
-                activeCount++;
-            }
-        }
-
-        // 创建活跃卡片数组
-        string[] memory activeNFCs = new string[](activeCount);
-        uint256 index = 0;
-
-        for (uint256 i = 0; i < allNFCs.length; i++) {
-            if (nfcBindings[allNFCs[i]].isActive) {
-                activeNFCs[index] = allNFCs[i];
-                index++;
-            }
-        }
-
-        return activeNFCs;
+    ) external view returns (string memory) {
+        return walletToNFC[walletAddress];
     }
 
     /**
-     * @dev 获取钱包的卡片统计信息
+     * @dev 检查钱包是否已绑定NFC卡片
      * @param walletAddress 钱包地址
-     * @return totalCards 总卡片数, activeCards 活跃卡片数, blankCards 空白卡数
+     * @return 是否已绑定
      */
-    function getWalletCardStats(
-        address walletAddress
-    )
-        external
-        view
-        returns (uint256 totalCards, uint256 activeCards, uint256 blankCards)
-    {
-        string[] memory allNFCs = walletToNFCs[walletAddress];
-        totalCards = allNFCs.length;
-
-        for (uint256 i = 0; i < allNFCs.length; i++) {
-            NFCBinding memory binding = nfcBindings[allNFCs[i]];
-            if (binding.isActive) {
-                activeCards++;
-                if (binding.isBlank) {
-                    blankCards++;
-                }
-            }
-        }
+    function isWalletBound(address walletAddress) external view returns (bool) {
+        return bytes(walletToNFC[walletAddress]).length > 0;
     }
 
     /**
@@ -342,34 +279,7 @@ contract NFCWalletRegistry is Ownable {
      * @return 是否已绑定
      */
     function isNFCBound(string memory nfcUID) public view returns (bool) {
-        return
-            nfcBindings[nfcUID].walletAddress != address(0) &&
-            nfcBindings[nfcUID].isActive;
-    }
-
-    /**
-     * @dev 获取NFC绑定的钱包地址
-     * @param nfcUID NFC卡片UID
-     * @return 绑定的钱包地址
-     */
-    function getNFCWallet(
-        string memory nfcUID
-    ) external view returns (address) {
-        if (!isNFCBound(nfcUID)) {
-            return address(0);
-        }
-        return nfcBindings[nfcUID].walletAddress;
-    }
-
-    /**
-     * @dev 获取钱包绑定的所有NFC
-     * @param walletAddress 钱包地址
-     * @return NFC UID数组
-     */
-    function getWalletNFCs(
-        address walletAddress
-    ) external view returns (string[] memory) {
-        return walletToNFCs[walletAddress];
+        return nfcBindings[nfcUID].isActive;
     }
 
     /**
@@ -380,126 +290,27 @@ contract NFCWalletRegistry is Ownable {
     function getNFCBinding(
         string memory nfcUID
     ) external view returns (NFCBinding memory) {
+        require(isNFCBound(nfcUID), "NFC not bound");
         return nfcBindings[nfcUID];
     }
 
     /**
-     * @dev 获取系统统计信息
-     * @return 总绑定数量
-     */
-    function getStats() external view returns (uint256) {
-        return totalBindings;
-    }
-
-    // 内部函数
-
-    /**
-     * @dev 从钱包的NFC列表中移除指定NFC
-     */
-    function _removeNFCFromWallet(
-        address walletAddress,
-        string memory nfcUID
-    ) internal {
-        string[] storage nfcList = walletToNFCs[walletAddress];
-        for (uint256 i = 0; i < nfcList.length; i++) {
-            if (keccak256(bytes(nfcList[i])) == keccak256(bytes(nfcUID))) {
-                nfcList[i] = nfcList[nfcList.length - 1];
-                nfcList.pop();
-                break;
-            }
-        }
-    }
-
-    /**
-     * @dev 检查是否为授权操作者
-     */
-    function _isAuthorizedOperator(
-        address operator
-    ) internal view returns (bool) {
-        // 将地址转换为字符串进行检查
-        return authorizedOperators[Strings.toHexString(uint160(operator), 20)];
-    }
-
-    /**
-     * @dev 验证所有者签名
-     * @param owner 钱包所有者地址
+     * @dev 获取NFC历史绑定记录
      * @param nfcUID NFC卡片UID
-     * @param action 操作类型
-     * @param signature 签名数据
-     * @return 签名是否有效
+     * @return 历史绑定记录数组
      */
-    function _verifyOwnerSignature(
-        address owner,
-        string memory nfcUID,
-        string memory action,
-        bytes memory signature
-    ) internal view returns (bool) {
-        // 构造签名消息
-        bytes32 messageHash = keccak256(
-            abi.encodePacked(
-                "\x19Ethereum Signed Message:\n",
-                "32",
-                keccak256(
-                    abi.encodePacked(owner, nfcUID, action, block.chainid)
-                )
-            )
-        );
-
-        // 恢复签名者地址
-        address signer = _recoverSigner(messageHash, signature);
-
-        return signer == owner;
+    function getNFCHistory(
+        string memory nfcUID
+    ) external view returns (NFCBinding[] memory) {
+        return nfcHistory[nfcUID];
     }
-
-    /**
-     * @dev 从签名中恢复签名者地址
-     * @param messageHash 消息哈希
-     * @param signature 签名数据
-     * @return 签名者地址
-     */
-    function _recoverSigner(
-        bytes32 messageHash,
-        bytes memory signature
-    ) internal pure returns (address) {
-        require(signature.length == 65, "Invalid signature length");
-
-        bytes32 r;
-        bytes32 s;
-        uint8 v;
-
-        assembly {
-            r := mload(add(signature, 32))
-            s := mload(add(signature, 64))
-            v := byte(0, mload(add(signature, 96)))
-        }
-
-        if (v < 27) {
-            v += 27;
-        }
-
-        require(v == 27 || v == 28, "Invalid signature v value");
-
-        return ecrecover(messageHash, v, r, s);
-    }
-
-    // 权限控制修饰符
-
-    modifier onlyAuthorizedOperator() {
-        require(
-            _isAuthorizedOperator(msg.sender) || msg.sender == owner(),
-            "Not authorized operator"
-        );
-        _;
-    }
-
-    // 管理员函数
 
     /**
      * @dev 授权操作者
-     * @param operatorId 操作者标识符（通常是地址字符串）
+     * @param operatorId 操作者ID
      * @param authorized 是否授权
      */
-    function setOperatorAuthorization(
+    function authorizeOperator(
         string memory operatorId,
         bool authorized
     ) external onlyOwner {
@@ -508,63 +319,79 @@ contract NFCWalletRegistry is Ownable {
     }
 
     /**
-     * @dev 紧急冻结NFC绑定
-     * @param nfcUID NFC卡片UID
+     * @dev 检查是否为授权操作者
+     * @param operatorId 操作者ID
+     * @return 是否授权
      */
-    function emergencyFreezeNFC(string memory nfcUID) external onlyOwner {
-        require(isNFCBound(nfcUID), "NFC not bound");
-        nfcBindings[nfcUID].isActive = false;
+    function isAuthorizedOperator(
+        string memory operatorId
+    ) public view returns (bool) {
+        return authorizedOperators[operatorId];
     }
 
     /**
-     * @dev 解冻NFC绑定
-     * @param nfcUID NFC卡片UID
+     * @dev 验证钱包所有者签名
+     * @param walletAddress 钱包地址
+     * @param nfcUID NFC UID
+     * @param action 操作类型
+     * @param signature 签名
+     * @return 签名是否有效
      */
-    function unfreezeNFC(string memory nfcUID) external onlyOwner {
-        require(
-            nfcBindings[nfcUID].walletAddress != address(0),
-            "NFC not exists"
+    function _verifyOwnerSignature(
+        address walletAddress,
+        string memory nfcUID,
+        string memory action,
+        bytes memory signature
+    ) internal pure returns (bool) {
+        // 构建签名消息
+        bytes32 messageHash = keccak256(
+            abi.encodePacked(walletAddress, nfcUID, action)
         );
-        nfcBindings[nfcUID].isActive = true;
+        bytes32 ethSignedMessageHash = keccak256(
+            abi.encodePacked("\x19Ethereum Signed Message:\n32", messageHash)
+        );
+
+        // 从签名中恢复签名者地址
+        (bytes32 r, bytes32 s, uint8 v) = _splitSignature(signature);
+        address signer = ecrecover(ethSignedMessageHash, v, r, s);
+
+        return signer == walletAddress;
     }
 
     /**
-     * @dev 批量绑定NFC (管理员功能，用于数据迁移)
-     * @param nfcUIDs NFC UID数组
-     * @param walletAddresses 对应的钱包地址数组
+     * @dev 分割签名
+     * @param signature 签名
+     * @return r 签名组件 r
+     * @return s 签名组件 s
+     * @return v 签名组件 v
      */
-    function batchBindNFCs(
-        string[] memory nfcUIDs,
-        address[] memory walletAddresses
-    ) external onlyOwner {
-        require(
-            nfcUIDs.length == walletAddresses.length,
-            "Array length mismatch"
-        );
+    function _splitSignature(
+        bytes memory signature
+    ) internal pure returns (bytes32 r, bytes32 s, uint8 v) {
+        require(signature.length == 65, "Invalid signature length");
 
-        for (uint256 i = 0; i < nfcUIDs.length; i++) {
-            if (!isNFCBound(nfcUIDs[i]) && walletAddresses[i] != address(0)) {
-                nfcBindings[nfcUIDs[i]] = NFCBinding({
-                    walletAddress: walletAddresses[i],
-                    boundAt: block.timestamp,
-                    unboundAt: 0,
-                    isActive: true,
-                    isBlank: false,
-                    metadata: ""
-                });
-
-                walletToNFCs[walletAddresses[i]].push(nfcUIDs[i]);
-                totalBindings++;
-
-                emit NFCWalletBound(
-                    nfcUIDs[i],
-                    walletAddresses[i],
-                    block.timestamp
-                );
-            }
+        assembly {
+            r := mload(add(signature, 32))
+            s := mload(add(signature, 64))
+            v := byte(0, mload(add(signature, 96)))
         }
     }
+
+    /**
+     * @dev 修饰符：仅授权操作者
+     */
+    modifier onlyAuthorizedOperator() {
+        require(
+            authorizedOperators[addressToString(msg.sender)] || msg.sender == owner(),
+            "Not authorized operator"
+        );
+        _;
+    }
+
+    /**
+     * @dev 将地址转换为字符串
+     */
+    function addressToString(address addr) internal pure returns (string memory) {
+        return Strings.toHexString(uint160(addr), 20);
+    }
 }
-
-
-

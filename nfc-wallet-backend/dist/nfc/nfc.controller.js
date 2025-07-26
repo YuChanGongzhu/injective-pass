@@ -12,13 +12,16 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
     return function (target, key) { decorator(target, key, paramIndex); }
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.NFCController = void 0;
+exports.ContractController = exports.NFCController = void 0;
 const common_1 = require("@nestjs/common");
 const swagger_1 = require("@nestjs/swagger");
 const nfc_service_1 = require("./nfc.service");
 const register_nfc_dto_1 = require("./dto/register-nfc.dto");
 const unbind_nfc_dto_1 = require("./dto/unbind-nfc.dto");
+const unbind_response_dto_1 = require("./dto/unbind-response.dto");
 const wallet_response_dto_1 = require("./dto/wallet-response.dto");
+const domain_nft_dto_1 = require("./dto/domain-nft.dto");
+const cat_nft_dto_1 = require("./dto/cat-nft.dto");
 let NFCController = class NFCController {
     constructor(nfcService) {
         this.nfcService = nfcService;
@@ -36,8 +39,8 @@ let NFCController = class NFCController {
     async checkDomainAvailability(domain) {
         return this.nfcService.checkDomainAvailability(domain);
     }
-    async createDomain(body) {
-        return this.nfcService.createDomain(body.uid, body.domainName);
+    async registerDomainNFT(registerDomainDto) {
+        return this.nfcService.registerDomainNFT(registerDomainDto);
     }
     async unbindNFC(unbindNFCDto) {
         return this.nfcService.unbindNFC(unbindNFCDto.uid);
@@ -47,6 +50,12 @@ let NFCController = class NFCController {
     }
     async getWalletBalance(address) {
         return this.nfcService.getWalletBalance(address);
+    }
+    async drawCatNFT(drawCatNFTDto) {
+        return this.nfcService.drawCatNFT(drawCatNFTDto);
+    }
+    async getUserCatNFTs(uid) {
+        return this.nfcService.getUserCatNFTs(uid);
     }
 };
 exports.NFCController = NFCController;
@@ -134,75 +143,65 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], NFCController.prototype, "checkDomainAvailability", null);
 __decorate([
-    (0, common_1.Post)('domain/create'),
+    (0, common_1.Post)('domain/register'),
     (0, common_1.HttpCode)(common_1.HttpStatus.OK),
     (0, swagger_1.ApiOperation)({
-        summary: '创建.inj域名',
-        description: '为指定的NFC卡片创建.inj域名',
+        summary: '注册域名NFT',
+        description: '为NFC卡片注册域名NFT（需要初始资金）',
     }),
     (0, swagger_1.ApiResponse)({
         status: 200,
-        description: '成功创建域名',
+        description: '成功注册域名NFT',
+        type: domain_nft_dto_1.DomainNFTResponseDto,
+    }),
+    (0, swagger_1.ApiResponse)({
+        status: 400,
+        description: '请求参数无效或注册失败',
         schema: {
             type: 'object',
             properties: {
-                success: {
-                    type: 'boolean',
-                    description: '是否成功',
-                    example: true,
+                statusCode: {
+                    type: 'number',
+                    description: 'HTTP状态码',
+                    example: 400,
                 },
-                domain: {
+                message: {
                     type: 'string',
-                    description: '创建的域名',
-                    example: 'alice.inj',
+                    description: '错误信息',
+                    example: '域名已被占用',
                 },
                 error: {
                     type: 'string',
-                    description: '错误信息（如果失败）',
+                    description: '错误类型',
+                    example: 'Bad Request',
                 },
             },
         },
     }),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object]),
+    __metadata("design:paramtypes", [domain_nft_dto_1.RegisterDomainDto]),
     __metadata("design:returntype", Promise)
-], NFCController.prototype, "createDomain", null);
+], NFCController.prototype, "registerDomainNFT", null);
 __decorate([
     (0, common_1.Post)('unbind'),
     (0, common_1.HttpCode)(common_1.HttpStatus.OK),
     (0, swagger_1.ApiOperation)({
         summary: '解绑NFC卡片',
-        description: '解绑NFC卡片，删除钱包记录并销毁NFT',
+        description: '解绑NFC卡片，删除钱包记录并进行链上解绑操作',
     }),
     (0, swagger_1.ApiResponse)({
         status: 200,
         description: '成功解绑',
-        schema: {
-            type: 'object',
-            properties: {
-                success: {
-                    type: 'boolean',
-                    description: '是否成功',
-                    example: true,
-                },
-                nfcUnbound: {
-                    type: 'boolean',
-                    description: 'NFC是否已解绑',
-                    example: true,
-                },
-                nftBurned: {
-                    type: 'boolean',
-                    description: 'NFT是否已销毁',
-                    example: true,
-                },
-                message: {
-                    type: 'string',
-                    description: '操作结果消息',
-                    example: '解绑成功',
-                },
-            },
-        },
+        type: unbind_response_dto_1.UnbindResponseDto,
+    }),
+    (0, swagger_1.ApiResponse)({
+        status: 400,
+        description: '请求参数错误',
+    }),
+    (0, swagger_1.ApiResponse)({
+        status: 404,
+        description: 'NFC卡片不存在',
     }),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
@@ -291,9 +290,149 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
 ], NFCController.prototype, "getWalletBalance", null);
+__decorate([
+    (0, common_1.Post)('cat/draw'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    (0, swagger_1.ApiOperation)({
+        summary: '抽卡获得小猫NFT',
+        description: '为NFC卡片抽卡获得小猫NFT（需要初始资金）',
+    }),
+    (0, swagger_1.ApiResponse)({
+        status: 200,
+        description: '成功抽到小猫NFT',
+        type: cat_nft_dto_1.CatNFTResponseDto,
+    }),
+    (0, swagger_1.ApiResponse)({
+        status: 400,
+        description: '请求参数无效或抽卡失败',
+        schema: {
+            type: 'object',
+            properties: {
+                statusCode: {
+                    type: 'number',
+                    description: 'HTTP状态码',
+                    example: 400,
+                },
+                message: {
+                    type: 'string',
+                    description: '错误信息',
+                    example: '小猫名称已被使用',
+                },
+                error: {
+                    type: 'string',
+                    description: '错误类型',
+                    example: 'Bad Request',
+                },
+            },
+        },
+    }),
+    (0, swagger_1.ApiResponse)({
+        status: 404,
+        description: '未找到对应的NFC卡片',
+    }),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [cat_nft_dto_1.DrawCatNFTDto]),
+    __metadata("design:returntype", Promise)
+], NFCController.prototype, "drawCatNFT", null);
+__decorate([
+    (0, common_1.Get)('cat/list/:uid'),
+    (0, swagger_1.ApiOperation)({
+        summary: '获取用户的小猫NFT列表',
+        description: '根据NFC UID获取用户拥有的所有小猫NFT',
+    }),
+    (0, swagger_1.ApiParam)({
+        name: 'uid',
+        description: 'NFC卡片UID',
+        example: '04:1a:2b:3c:4d:5e:6f',
+    }),
+    (0, swagger_1.ApiResponse)({
+        status: 200,
+        description: '成功获取小猫NFT列表',
+        type: cat_nft_dto_1.CatNFTListDto,
+    }),
+    (0, swagger_1.ApiResponse)({
+        status: 404,
+        description: '未找到对应的NFC卡片',
+    }),
+    __param(0, (0, common_1.Param)('uid')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], NFCController.prototype, "getUserCatNFTs", null);
 exports.NFCController = NFCController = __decorate([
     (0, swagger_1.ApiTags)('NFC钱包管理'),
     (0, common_1.Controller)('api/nfc'),
     __metadata("design:paramtypes", [nfc_service_1.NFCService])
 ], NFCController);
+let ContractController = class ContractController {
+    constructor(nfcService) {
+        this.nfcService = nfcService;
+    }
+    async getContractStatus() {
+        return this.nfcService.getContractStatus();
+    }
+};
+exports.ContractController = ContractController;
+__decorate([
+    (0, common_1.Get)('status'),
+    (0, swagger_1.ApiOperation)({
+        summary: '获取合约状态',
+        description: '检查所有智能合约的连接状态和网络信息',
+    }),
+    (0, swagger_1.ApiResponse)({
+        status: 200,
+        description: '成功获取合约状态',
+        schema: {
+            type: 'object',
+            properties: {
+                nfcRegistry: {
+                    type: 'boolean',
+                    description: 'NFC注册表合约状态',
+                    example: true,
+                },
+                domainNFT: {
+                    type: 'boolean',
+                    description: '域名NFT合约状态',
+                    example: true,
+                },
+                catNFT: {
+                    type: 'boolean',
+                    description: '小猫NFT合约状态',
+                    example: true,
+                },
+                networkInfo: {
+                    type: 'object',
+                    description: '网络信息',
+                    properties: {
+                        network: {
+                            type: 'string',
+                            example: 'TestnetSentry',
+                        },
+                        chainId: {
+                            type: 'string',
+                            example: 'injective-888',
+                        },
+                        rpcUrl: {
+                            type: 'string',
+                            example: 'https://testnet.sentry.grpc.injective.network:443',
+                        },
+                        restUrl: {
+                            type: 'string',
+                            example: 'https://testnet.sentry.rest.injective.network',
+                        },
+                    },
+                },
+            },
+        },
+    }),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], ContractController.prototype, "getContractStatus", null);
+exports.ContractController = ContractController = __decorate([
+    (0, swagger_1.ApiTags)('合约状态'),
+    (0, common_1.Controller)('api/contract'),
+    __metadata("design:paramtypes", [nfc_service_1.NFCService])
+], ContractController);
 //# sourceMappingURL=nfc.controller.js.map

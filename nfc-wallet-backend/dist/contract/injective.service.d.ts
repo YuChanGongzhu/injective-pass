@@ -4,7 +4,13 @@ export declare class InjectiveService {
     private readonly masterPrivateKey;
     private readonly network;
     private readonly endpoints;
+    private readonly evmProvider;
+    private readonly evmWallet;
+    private nfcRegistryContract;
+    private domainNFTContract;
+    private catNFTContract;
     constructor(configService: ConfigService);
+    private initializeContracts;
     private getChainId;
     generateInjectiveWallet(): {
         privateKey: string;
@@ -30,6 +36,7 @@ export declare class InjectiveService {
         success: boolean;
         txHash?: string;
         error?: string;
+        rawTx?: any;
     }>;
     getAccountBalance(address: string): Promise<{
         inj: string;
@@ -48,4 +55,26 @@ export declare class InjectiveService {
         rpcUrl: string;
         restUrl: string;
     };
+    mintDomainNFT(ownerAddress: string, domainName: string, nfcUID: string, tokenId: string): Promise<{
+        success: boolean;
+        txHash?: string;
+        error?: string;
+        rawTx?: any;
+    }>;
+    mintCatNFT(ownerAddress: string, catName: string): Promise<{
+        success: boolean;
+        txHash?: string;
+        error?: string;
+        rawTx?: any;
+        rarity?: string;
+        color?: string;
+    }>;
+    getContractStatus(): Promise<{
+        nfcRegistry: boolean;
+        domainNFT: boolean;
+        catNFT: boolean;
+        networkInfo: any;
+    }>;
+    unbindNFCWallet(nfcUID: string, ownerSignature: string): Promise<string>;
+    emergencyUnbindNFCWallet(nfcUID: string): Promise<string>;
 }

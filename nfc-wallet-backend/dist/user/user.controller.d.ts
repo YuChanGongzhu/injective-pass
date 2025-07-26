@@ -1,6 +1,7 @@
 import { UserService } from './user.service';
 import { UpdateDomainDto } from './dto/update-domain.dto';
 import { UserProfileDto } from './dto/user-profile.dto';
+import { ExportPrivateKeyDto, PrivateKeyResponseDto } from './dto/export-private-key.dto';
 export declare class UserController {
     private readonly userService;
     constructor(userService: UserService);
@@ -17,18 +18,5 @@ export declare class UserController {
         page: number;
         totalPages: number;
     }>;
-    exportPrivateKey(uid: string): Promise<{
-        success: boolean;
-        privateKey?: string;
-        warning?: string;
-        error?: string;
-    }>;
-    exportPrivateKeyByAddress(body: {
-        address: string;
-    }): Promise<{
-        success: boolean;
-        privateKey?: string;
-        warning?: string;
-        error?: string;
-    }>;
+    exportPrivateKey(exportPrivateKeyDto: ExportPrivateKeyDto): Promise<PrivateKeyResponseDto>;
 }

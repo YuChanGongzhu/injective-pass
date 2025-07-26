@@ -21,10 +21,10 @@ export class NFCCardDto {
     isActive: boolean;
 
     @ApiProperty({
-        description: '卡片创建时间',
-        example: '2023-01-01T00:00:00.000Z'
+        description: '是否为空白卡片',
+        example: true
     })
-    createdAt: Date;
+    isBlank: boolean;
 }
 
 export class TransactionDto {
@@ -36,7 +36,7 @@ export class TransactionDto {
 
     @ApiProperty({
         description: '交易类型',
-        enum: ['SEND', 'RECEIVE', 'INITIAL_FUND', 'NFT_MINT', 'DOMAIN_REG', 'SWAP', 'STAKE', 'UNSTAKE']
+        enum: ['SEND', 'RECEIVE', 'INITIAL_FUND', 'DOMAIN_NFT_MINT', 'CAT_NFT_MINT', 'DOMAIN_REG', 'SWAP', 'STAKE', 'UNSTAKE']
     })
     type: string;
 
@@ -81,12 +81,6 @@ export class WalletResponseDto {
     ethAddress: string;
 
     @ApiProperty({
-        description: '公钥',
-        example: 'A2584XcrtLulyxpZsJ8AQuxl/tPgRcHKuo2PcRcQX8Ni',
-    })
-    publicKey: string;
-
-    @ApiProperty({
         description: '.inj域名',
         example: 'alice.inj',
         required: false,
@@ -94,17 +88,11 @@ export class WalletResponseDto {
     domain?: string;
 
     @ApiProperty({
-        description: 'NFT代币ID',
-        example: '12345',
+        description: '域名NFT代币ID (链上tokenId)',
+        example: '1',
         required: false,
     })
-    nftTokenId?: string;
-
-    @ApiProperty({
-        description: '是否是新创建的钱包',
-        example: true,
-    })
-    isNewWallet: boolean;
+    domainTokenId?: string;
 
     @ApiProperty({
         description: '是否已获得初始资金',
@@ -113,10 +101,17 @@ export class WalletResponseDto {
     initialFunded: boolean;
 
     @ApiProperty({
-        description: '关联的NFC卡片列表',
-        type: [NFCCardDto]
+        description: '是否已注册域名',
+        example: false,
     })
-    nfcCards: NFCCardDto[];
+    domainRegistered: boolean;
+
+    @ApiProperty({
+        description: '关联的NFC卡片（一一对应）',
+        type: NFCCardDto,
+        required: false
+    })
+    nfcCard?: NFCCardDto;
 
     @ApiProperty({
         description: '最近的交易记录',
@@ -125,16 +120,17 @@ export class WalletResponseDto {
     recentTransactions: TransactionDto[];
 
     @ApiProperty({
-        description: '创建时间',
-        example: '2023-01-01T00:00:00.000Z',
+        description: '是否是新创建的钱包',
+        example: true,
     })
-    createdAt: Date;
+    isNewWallet: boolean;
 
     @ApiProperty({
-        description: '更新时间',
-        example: '2023-01-01T00:00:00.000Z',
+        description: '初始资金交易哈希（如果有）',
+        example: '0x1234567890abcdef...',
+        required: false,
     })
-    updatedAt: Date;
+    initialFundTxHash?: string;
 }
 
 export class TransactionResponseDto {
@@ -185,4 +181,17 @@ export class TransactionResponseDto {
         required: false
     })
     fee?: string;
+
+    @ApiProperty({
+        description: '交易备注',
+        example: '转账给朋友',
+        required: false
+    })
+    memo?: string;
+
+    @ApiProperty({
+        description: '原始交易数据',
+        required: false
+    })
+    rawTx?: any;
 } 

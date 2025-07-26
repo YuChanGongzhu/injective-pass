@@ -38,11 +38,11 @@ __decorate([
 ], NFCCardDto.prototype, "isActive", void 0);
 __decorate([
     (0, swagger_1.ApiProperty)({
-        description: '卡片创建时间',
-        example: '2023-01-01T00:00:00.000Z'
+        description: '是否为空白卡片',
+        example: true
     }),
-    __metadata("design:type", Date)
-], NFCCardDto.prototype, "createdAt", void 0);
+    __metadata("design:type", Boolean)
+], NFCCardDto.prototype, "isBlank", void 0);
 class TransactionDto {
 }
 exports.TransactionDto = TransactionDto;
@@ -56,7 +56,7 @@ __decorate([
 __decorate([
     (0, swagger_1.ApiProperty)({
         description: '交易类型',
-        enum: ['SEND', 'RECEIVE', 'INITIAL_FUND', 'NFT_MINT', 'DOMAIN_REG', 'SWAP', 'STAKE', 'UNSTAKE']
+        enum: ['SEND', 'RECEIVE', 'INITIAL_FUND', 'DOMAIN_NFT_MINT', 'CAT_NFT_MINT', 'DOMAIN_REG', 'SWAP', 'STAKE', 'UNSTAKE']
     }),
     __metadata("design:type", String)
 ], TransactionDto.prototype, "type", void 0);
@@ -109,13 +109,6 @@ __decorate([
 ], WalletResponseDto.prototype, "ethAddress", void 0);
 __decorate([
     (0, swagger_1.ApiProperty)({
-        description: '公钥',
-        example: 'A2584XcrtLulyxpZsJ8AQuxl/tPgRcHKuo2PcRcQX8Ni',
-    }),
-    __metadata("design:type", String)
-], WalletResponseDto.prototype, "publicKey", void 0);
-__decorate([
-    (0, swagger_1.ApiProperty)({
         description: '.inj域名',
         example: 'alice.inj',
         required: false,
@@ -124,19 +117,12 @@ __decorate([
 ], WalletResponseDto.prototype, "domain", void 0);
 __decorate([
     (0, swagger_1.ApiProperty)({
-        description: 'NFT代币ID',
-        example: '12345',
+        description: '域名NFT代币ID (链上tokenId)',
+        example: '1',
         required: false,
     }),
     __metadata("design:type", String)
-], WalletResponseDto.prototype, "nftTokenId", void 0);
-__decorate([
-    (0, swagger_1.ApiProperty)({
-        description: '是否是新创建的钱包',
-        example: true,
-    }),
-    __metadata("design:type", Boolean)
-], WalletResponseDto.prototype, "isNewWallet", void 0);
+], WalletResponseDto.prototype, "domainTokenId", void 0);
 __decorate([
     (0, swagger_1.ApiProperty)({
         description: '是否已获得初始资金',
@@ -146,11 +132,19 @@ __decorate([
 ], WalletResponseDto.prototype, "initialFunded", void 0);
 __decorate([
     (0, swagger_1.ApiProperty)({
-        description: '关联的NFC卡片列表',
-        type: [NFCCardDto]
+        description: '是否已注册域名',
+        example: false,
     }),
-    __metadata("design:type", Array)
-], WalletResponseDto.prototype, "nfcCards", void 0);
+    __metadata("design:type", Boolean)
+], WalletResponseDto.prototype, "domainRegistered", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({
+        description: '关联的NFC卡片（一一对应）',
+        type: NFCCardDto,
+        required: false
+    }),
+    __metadata("design:type", NFCCardDto)
+], WalletResponseDto.prototype, "nfcCard", void 0);
 __decorate([
     (0, swagger_1.ApiProperty)({
         description: '最近的交易记录',
@@ -160,18 +154,19 @@ __decorate([
 ], WalletResponseDto.prototype, "recentTransactions", void 0);
 __decorate([
     (0, swagger_1.ApiProperty)({
-        description: '创建时间',
-        example: '2023-01-01T00:00:00.000Z',
+        description: '是否是新创建的钱包',
+        example: true,
     }),
-    __metadata("design:type", Date)
-], WalletResponseDto.prototype, "createdAt", void 0);
+    __metadata("design:type", Boolean)
+], WalletResponseDto.prototype, "isNewWallet", void 0);
 __decorate([
     (0, swagger_1.ApiProperty)({
-        description: '更新时间',
-        example: '2023-01-01T00:00:00.000Z',
+        description: '初始资金交易哈希（如果有）',
+        example: '0x1234567890abcdef...',
+        required: false,
     }),
-    __metadata("design:type", Date)
-], WalletResponseDto.prototype, "updatedAt", void 0);
+    __metadata("design:type", String)
+], WalletResponseDto.prototype, "initialFundTxHash", void 0);
 class TransactionResponseDto {
 }
 exports.TransactionResponseDto = TransactionResponseDto;
@@ -230,4 +225,19 @@ __decorate([
     }),
     __metadata("design:type", String)
 ], TransactionResponseDto.prototype, "fee", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({
+        description: '交易备注',
+        example: '转账给朋友',
+        required: false
+    }),
+    __metadata("design:type", String)
+], TransactionResponseDto.prototype, "memo", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({
+        description: '原始交易数据',
+        required: false
+    }),
+    __metadata("design:type", Object)
+], TransactionResponseDto.prototype, "rawTx", void 0);
 //# sourceMappingURL=wallet-response.dto.js.map

@@ -1,7 +1,8 @@
 import { PrismaService } from '../prisma/prisma.service';
+import { CryptoService } from '../crypto/crypto.service';
 import { UpdateDomainDto } from './dto/update-domain.dto';
 import { UserProfileDto } from './dto/user-profile.dto';
-import { CryptoService } from '../crypto/crypto.service';
+import { ExportPrivateKeyDto, PrivateKeyResponseDto } from './dto/export-private-key.dto';
 export declare class UserService {
     private prisma;
     private cryptoService;
@@ -23,23 +24,25 @@ export declare class UserService {
         address: string;
         ethAddress: string;
         domain: string | null;
-        nfcCards: Array<{
+        nfcCard: {
             uid: string;
             nickname: string | null;
             isActive: boolean;
+            isBlank: boolean;
             createdAt: Date;
-        }>;
+        } | null;
         transactionCount: number;
         createdAt: Date;
         updatedAt: Date;
     } | null>;
-    getUserNFCCards(address: string): Promise<Array<{
+    getUserNFCCard(address: string): Promise<{
         uid: string;
         nickname: string | null;
         isActive: boolean;
+        isBlank: boolean;
         createdAt: Date;
         updatedAt: Date;
-    }>>;
+    } | null>;
     updateNFCCardNickname(uid: string, nickname: string): Promise<{
         success: boolean;
         message: string;
@@ -48,17 +51,6 @@ export declare class UserService {
         success: boolean;
         message: string;
     }>;
-    exportPrivateKey(uid: string): Promise<{
-        success: boolean;
-        privateKey?: string;
-        warning?: string;
-        error?: string;
-    }>;
-    exportPrivateKeyByAddress(address: string): Promise<{
-        success: boolean;
-        privateKey?: string;
-        warning?: string;
-        error?: string;
-    }>;
+    exportPrivateKey(exportPrivateKeyDto: ExportPrivateKeyDto): Promise<PrivateKeyResponseDto>;
     private validateDomainPrefix;
 }

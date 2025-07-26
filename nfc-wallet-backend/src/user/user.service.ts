@@ -3,7 +3,6 @@ import {
     NotFoundException,
     ConflictException,
     BadRequestException,
-    ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CryptoService } from '../crypto/crypto.service';
@@ -145,19 +144,19 @@ export class UserService {
     async getUserByDomain(domain: string): Promise<UserProfileDto | null> {
         const user = await this.prisma.user.findUnique({
             where: { domain },
-            include: { nfcCards: true }
+            include: { nfcCard: true }
         });
 
         if (!user) {
             return null;
         }
 
-        // 返回第一个NFC卡片的UID作为代表
-        const primaryUid = user.nfcCards.length > 0 ? user.nfcCards[0].uid : '';
+        // 返回NFC卡片的UID
+        const uid = user.nfcCard ? user.nfcCard.uid : '';
 
         return {
             address: user.address,
-            uid: primaryUid,
+            uid: uid,
             domain: user.domain,
             createdAt: user.createdAt,
             updatedAt: user.updatedAt,
@@ -181,7 +180,7 @@ export class UserService {
                 take: limit,
                 orderBy: { createdAt: 'desc' },
                 include: {
-                    nfcCards: {
+                    nfcCard: {
                         select: {
                             uid: true
                         }
@@ -194,7 +193,7 @@ export class UserService {
         return {
             users: users.map((user) => ({
                 address: user.address,
-                uid: user.nfcCards.length > 0 ? user.nfcCards[0].uid : '', // 返回第一个NFC卡片UID
+                uid: user.nfcCard ? user.nfcCard.uid : '', // 返回NFC卡片UID
                 domain: user.domain,
                 createdAt: user.createdAt,
                 updatedAt: user.updatedAt,
@@ -212,12 +211,13 @@ export class UserService {
         address: string;
         ethAddress: string;
         domain: string | null;
-        nfcCards: Array<{
+        nfcCard: {
             uid: string;
             nickname: string | null;
             isActive: boolean;
+            isBlank: boolean;
             createdAt: Date;
-        }>;
+        } | null;
         transactionCount: number;
         createdAt: Date;
         updatedAt: Date;
@@ -225,9 +225,7 @@ export class UserService {
         const user = await this.prisma.user.findUnique({
             where: { address },
             include: {
-                nfcCards: {
-                    orderBy: { createdAt: 'desc' }
-                },
+                nfcCard: true,
                 transactions: {
                     select: { id: true }
                 }
@@ -242,48 +240,49 @@ export class UserService {
             address: user.address,
             ethAddress: user.ethAddress,
             domain: user.domain,
-            nfcCards: user.nfcCards.map(card => ({
-                uid: card.uid,
-                nickname: card.nickname,
-                isActive: card.isActive,
-                createdAt: card.createdAt
-            })),
+            nfcCard: user.nfcCard ? {
+                uid: user.nfcCard.uid,
+                nickname: user.nfcCard.nickname,
+                isActive: user.nfcCard.isActive,
+                isBlank: user.nfcCard.isBlank,
+                createdAt: user.nfcCard.createdAt
+            } : null,
             transactionCount: user.transactions.length,
             createdAt: user.createdAt,
-            updatedAt: user.updatedAt
+            updatedAt: user.updatedAt,
         };
     }
 
     /**
-     * 获取用户的NFC卡片列表
+     * 获取用户的NFC卡片信息（一一对应关系）
      */
-    async getUserNFCCards(address: string): Promise<Array<{
+    async getUserNFCCard(address: string): Promise<{
         uid: string;
         nickname: string | null;
         isActive: boolean;
+        isBlank: boolean;
         createdAt: Date;
         updatedAt: Date;
-    }>> {
+    } | null> {
         const user = await this.prisma.user.findUnique({
             where: { address },
             include: {
-                nfcCards: {
-                    orderBy: { createdAt: 'desc' }
-                }
+                nfcCard: true
             }
         });
 
-        if (!user) {
-            throw new NotFoundException('用户不存在');
+        if (!user || !user.nfcCard) {
+            return null;
         }
 
-        return user.nfcCards.map(card => ({
-            uid: card.uid,
-            nickname: card.nickname,
-            isActive: card.isActive,
-            createdAt: card.createdAt,
-            updatedAt: card.updatedAt
-        }));
+        return {
+            uid: user.nfcCard.uid,
+            nickname: user.nfcCard.nickname,
+            isActive: user.nfcCard.isActive,
+            isBlank: user.nfcCard.isBlank,
+            createdAt: user.nfcCard.createdAt,
+            updatedAt: user.nfcCard.updatedAt
+        };
     }
 
     /**
@@ -334,51 +333,22 @@ export class UserService {
     }
 
     /**
-     * 导出用户私钥
-     */
+ * 导出用户私钥
+ */
     async exportPrivateKey(exportPrivateKeyDto: ExportPrivateKeyDto): Promise<PrivateKeyResponseDto> {
-        const { uid, address, confirmation } = exportPrivateKeyDto;
+        const { uid } = exportPrivateKeyDto;
 
-        // 验证确认字符串
-        if (confirmation !== 'I_UNDERSTAND_THE_RISKS') {
-            throw new ForbiddenException('需要确认理解私钥导出的风险');
+        // 通过NFC UID查找用户
+        const nfcCard = await this.prisma.nFCCard.findUnique({
+            where: { uid },
+            include: { user: true }
+        });
+
+        if (!nfcCard) {
+            throw new NotFoundException('未找到对应的NFC卡片');
         }
 
-        // 验证至少提供了uid或address中的一个
-        if (!uid && !address) {
-            throw new BadRequestException('必须提供NFC UID或用户地址');
-        }
-
-        let user;
-
-        // 根据提供的参数查找用户
-        if (uid) {
-            // 通过NFC UID查找用户
-            const nfcCard = await this.prisma.nFCCard.findUnique({
-                where: { uid },
-                include: { user: true }
-            });
-
-            if (!nfcCard) {
-                throw new NotFoundException('未找到对应的NFC卡片');
-            }
-
-            user = nfcCard.user;
-
-            // 如果同时提供了address，验证是否匹配
-            if (address && user.address !== address) {
-                throw new ForbiddenException('提供的地址与NFC UID对应的用户不匹配');
-            }
-        } else if (address) {
-            // 通过地址查找用户
-            user = await this.prisma.user.findUnique({
-                where: { address }
-            });
-
-            if (!user) {
-                throw new NotFoundException('未找到对应的用户');
-            }
-        }
+        const user = nfcCard.user;
 
         try {
             // 解密私钥

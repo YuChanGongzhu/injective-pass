@@ -21,9 +21,10 @@ export declare class TransactionService {
     createTransaction(data: CreateTransactionData): Promise<{
         txHash: string;
         amount: string | null;
+        rawTx: import("@prisma/client/runtime/library").JsonValue | null;
+        type: import(".prisma/client").$Enums.TransactionType;
         id: number;
         userId: number;
-        type: import(".prisma/client").$Enums.TransactionType;
         tokenSymbol: string | null;
         fromAddress: string | null;
         toAddress: string | null;
@@ -32,16 +33,16 @@ export declare class TransactionService {
         gasUsed: string | null;
         fee: string | null;
         memo: string | null;
-        rawTx: import("@prisma/client/runtime/library").JsonValue | null;
         createdAt: Date;
         updatedAt: Date;
     }>;
     updateTransactionStatus(txHash: string, status: TxStatus, blockHeight?: string, gasUsed?: string, fee?: string): Promise<{
         txHash: string;
         amount: string | null;
+        rawTx: import("@prisma/client/runtime/library").JsonValue | null;
+        type: import(".prisma/client").$Enums.TransactionType;
         id: number;
         userId: number;
-        type: import(".prisma/client").$Enums.TransactionType;
         tokenSymbol: string | null;
         fromAddress: string | null;
         toAddress: string | null;
@@ -50,16 +51,16 @@ export declare class TransactionService {
         gasUsed: string | null;
         fee: string | null;
         memo: string | null;
-        rawTx: import("@prisma/client/runtime/library").JsonValue | null;
         createdAt: Date;
         updatedAt: Date;
     }>;
     getUserTransactions(userId: number, limit?: number): Promise<{
         txHash: string;
         amount: string | null;
+        rawTx: import("@prisma/client/runtime/library").JsonValue | null;
+        type: import(".prisma/client").$Enums.TransactionType;
         id: number;
         userId: number;
-        type: import(".prisma/client").$Enums.TransactionType;
         tokenSymbol: string | null;
         fromAddress: string | null;
         toAddress: string | null;
@@ -68,7 +69,6 @@ export declare class TransactionService {
         gasUsed: string | null;
         fee: string | null;
         memo: string | null;
-        rawTx: import("@prisma/client/runtime/library").JsonValue | null;
         createdAt: Date;
         updatedAt: Date;
     }[]>;
@@ -81,9 +81,10 @@ export declare class TransactionService {
     } & {
         txHash: string;
         amount: string | null;
+        rawTx: import("@prisma/client/runtime/library").JsonValue | null;
+        type: import(".prisma/client").$Enums.TransactionType;
         id: number;
         userId: number;
-        type: import(".prisma/client").$Enums.TransactionType;
         tokenSymbol: string | null;
         fromAddress: string | null;
         toAddress: string | null;
@@ -92,16 +93,16 @@ export declare class TransactionService {
         gasUsed: string | null;
         fee: string | null;
         memo: string | null;
-        rawTx: import("@prisma/client/runtime/library").JsonValue | null;
         createdAt: Date;
         updatedAt: Date;
     }>;
     getPendingTransactions(): Promise<{
         txHash: string;
         amount: string | null;
+        rawTx: import("@prisma/client/runtime/library").JsonValue | null;
+        type: import(".prisma/client").$Enums.TransactionType;
         id: number;
         userId: number;
-        type: import(".prisma/client").$Enums.TransactionType;
         tokenSymbol: string | null;
         fromAddress: string | null;
         toAddress: string | null;
@@ -110,7 +111,6 @@ export declare class TransactionService {
         gasUsed: string | null;
         fee: string | null;
         memo: string | null;
-        rawTx: import("@prisma/client/runtime/library").JsonValue | null;
         createdAt: Date;
         updatedAt: Date;
     }[]>;

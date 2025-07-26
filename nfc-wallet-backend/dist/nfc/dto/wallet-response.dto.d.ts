@@ -2,7 +2,7 @@ export declare class NFCCardDto {
     uid: string;
     nickname?: string;
     isActive: boolean;
-    createdAt: Date;
+    isBlank: boolean;
 }
 export declare class TransactionDto {
     txHash: string;
@@ -15,15 +15,14 @@ export declare class TransactionDto {
 export declare class WalletResponseDto {
     address: string;
     ethAddress: string;
-    publicKey: string;
     domain?: string;
-    nftTokenId?: string;
-    isNewWallet: boolean;
+    domainTokenId?: string;
     initialFunded: boolean;
-    nfcCards: NFCCardDto[];
+    domainRegistered: boolean;
+    nfcCard?: NFCCardDto;
     recentTransactions: TransactionDto[];
-    createdAt: Date;
-    updatedAt: Date;
+    isNewWallet: boolean;
+    initialFundTxHash?: string;
 }
 export declare class TransactionResponseDto {
     success: boolean;
@@ -33,4 +32,6 @@ export declare class TransactionResponseDto {
     blockHeight?: string;
     gasUsed?: string;
     fee?: string;
+    memo?: string;
+    rawTx?: any;
 }

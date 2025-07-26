@@ -106,15 +106,15 @@ let UserService = class UserService {
     async getUserByDomain(domain) {
         const user = await this.prisma.user.findUnique({
             where: { domain },
-            include: { nfcCards: true }
+            include: { nfcCard: true }
         });
         if (!user) {
             return null;
         }
-        const primaryUid = user.nfcCards.length > 0 ? user.nfcCards[0].uid : '';
+        const uid = user.nfcCard ? user.nfcCard.uid : '';
         return {
             address: user.address,
-            uid: primaryUid,
+            uid: uid,
             domain: user.domain,
             createdAt: user.createdAt,
             updatedAt: user.updatedAt,
@@ -128,7 +128,7 @@ let UserService = class UserService {
                 take: limit,
                 orderBy: { createdAt: 'desc' },
                 include: {
-                    nfcCards: {
+                    nfcCard: {
                         select: {
                             uid: true
                         }
@@ -140,7 +140,7 @@ let UserService = class UserService {
         return {
             users: users.map((user) => ({
                 address: user.address,
-                uid: user.nfcCards.length > 0 ? user.nfcCards[0].uid : '',
+                uid: user.nfcCard ? user.nfcCard.uid : '',
                 domain: user.domain,
                 createdAt: user.createdAt,
                 updatedAt: user.updatedAt,
@@ -154,9 +154,7 @@ let UserService = class UserService {
         const user = await this.prisma.user.findUnique({
             where: { address },
             include: {
-                nfcCards: {
-                    orderBy: { createdAt: 'desc' }
-                },
+                nfcCard: true,
                 transactions: {
                     select: { id: true }
                 }
@@ -169,36 +167,36 @@ let UserService = class UserService {
             address: user.address,
             ethAddress: user.ethAddress,
             domain: user.domain,
-            nfcCards: user.nfcCards.map(card => ({
-                uid: card.uid,
-                nickname: card.nickname,
-                isActive: card.isActive,
-                createdAt: card.createdAt
-            })),
+            nfcCard: user.nfcCard ? {
+                uid: user.nfcCard.uid,
+                nickname: user.nfcCard.nickname,
+                isActive: user.nfcCard.isActive,
+                isBlank: user.nfcCard.isBlank,
+                createdAt: user.nfcCard.createdAt
+            } : null,
             transactionCount: user.transactions.length,
             createdAt: user.createdAt,
-            updatedAt: user.updatedAt
+            updatedAt: user.updatedAt,
         };
     }
-    async getUserNFCCards(address) {
+    async getUserNFCCard(address) {
         const user = await this.prisma.user.findUnique({
             where: { address },
             include: {
-                nfcCards: {
-                    orderBy: { createdAt: 'desc' }
-                }
+                nfcCard: true
             }
         });
-        if (!user) {
-            throw new common_1.NotFoundException('用户不存在');
+        if (!user || !user.nfcCard) {
+            return null;
         }
-        return user.nfcCards.map(card => ({
-            uid: card.uid,
-            nickname: card.nickname,
-            isActive: card.isActive,
-            createdAt: card.createdAt,
-            updatedAt: card.updatedAt
-        }));
+        return {
+            uid: user.nfcCard.uid,
+            nickname: user.nfcCard.nickname,
+            isActive: user.nfcCard.isActive,
+            isBlank: user.nfcCard.isBlank,
+            createdAt: user.nfcCard.createdAt,
+            updatedAt: user.nfcCard.updatedAt
+        };
     }
     async updateNFCCardNickname(uid, nickname) {
         const nfcCard = await this.prisma.nFCCard.findUnique({
@@ -227,70 +225,31 @@ let UserService = class UserService {
         const status = isActive ? '激活' : '停用';
         return { success: true, message: `NFC卡片${status}成功` };
     }
-    async exportPrivateKey(uid) {
+    async exportPrivateKey(exportPrivateKeyDto) {
+        const { uid } = exportPrivateKeyDto;
+        const nfcCard = await this.prisma.nFCCard.findUnique({
+            where: { uid },
+            include: { user: true }
+        });
+        if (!nfcCard) {
+            throw new common_1.NotFoundException('未找到对应的NFC卡片');
+        }
+        const user = nfcCard.user;
         try {
-            const nfcCard = await this.prisma.nFCCard.findUnique({
-                where: { uid },
-                include: {
-                    user: {
-                        select: {
-                            id: true,
-                            address: true,
-                            privateKeyEnc: true,
-                        }
-                    }
-                }
-            });
-            if (!nfcCard || !nfcCard.user) {
-                return {
-                    success: false,
-                    error: '未找到该NFC卡对应的用户'
-                };
-            }
-            const decryptedPrivateKey = await this.cryptoService.decrypt(nfcCard.user.privateKeyEnc);
+            const decryptedPrivateKey = this.cryptoService.decrypt(user.privateKeyEnc);
+            const formattedPrivateKey = decryptedPrivateKey.startsWith('0x')
+                ? decryptedPrivateKey
+                : `0x${decryptedPrivateKey}`;
             return {
-                success: true,
-                privateKey: decryptedPrivateKey,
-                warning: '私钥是您钱包的唯一凭证，请妥善保管。任何人获得您的私钥都可以完全控制您的资产。建议将私钥安全存储在离线环境中。'
+                address: user.address,
+                privateKey: formattedPrivateKey,
+                exportedAt: new Date(),
+                warning: '警告：私钥是您钱包的完全控制权限。请妥善保管，不要与任何人分享。如果私钥泄露，您的资产可能会丢失。'
             };
         }
         catch (error) {
-            console.error('Export private key error:', error);
-            return {
-                success: false,
-                error: '导出私钥失败，请稍后重试'
-            };
-        }
-    }
-    async exportPrivateKeyByAddress(address) {
-        try {
-            const user = await this.prisma.user.findUnique({
-                where: { address },
-                select: {
-                    id: true,
-                    address: true,
-                    privateKeyEnc: true,
-                }
-            });
-            if (!user) {
-                return {
-                    success: false,
-                    error: '未找到该地址对应的用户'
-                };
-            }
-            const decryptedPrivateKey = await this.cryptoService.decrypt(user.privateKeyEnc);
-            return {
-                success: true,
-                privateKey: decryptedPrivateKey,
-                warning: '私钥是您钱包的唯一凭证，请妥善保管。任何人获得您的私钥都可以完全控制您的资产。建议将私钥安全存储在离线环境中。'
-            };
-        }
-        catch (error) {
-            console.error('Export private key by address error:', error);
-            return {
-                success: false,
-                error: '导出私钥失败，请稍后重试'
-            };
+            console.error('私钥解密失败:', error);
+            throw new common_1.BadRequestException('私钥解密失败，可能数据已损坏');
         }
     }
     validateDomainPrefix(domainPrefix) {

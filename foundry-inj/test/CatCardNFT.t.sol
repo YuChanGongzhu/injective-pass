@@ -2,152 +2,139 @@
 pragma solidity 0.8.30;
 
 import "forge-std/Test.sol";
-import "../src/NFCCardNFT.sol";
+import "../src/CatNFT.sol";
+import "../src/NFCWalletRegistry.sol";
 
 contract CatCardNFTTest is Test {
-    CatCardNFT public catNFT;
+    CatNFT public catNFT;
+    NFCWalletRegistry public nfcRegistry;
 
     address public owner;
-    address public authorizedMinter;
     address public user1;
     address public user2;
     address public unauthorizedUser;
 
-    string constant NFC_UID_1 = "04:1a:2b:3c:4d:5e:6f";
-    string constant NFC_UID_2 = "04:2a:3b:4c:5d:6e:7f";
-    string constant NFC_UID_3 = "04:3a:4b:5c:6d:7e:8f";
-
-    event CatMinted(
-        uint256 indexed tokenId,
-        string indexed nfcUID,
-        address indexed owner,
-        string catName,
-        uint8 breed
-    );
-    event CatBound(
-        uint256 indexed tokenId,
-        string indexed nfcUID,
-        address indexed wallet
-    );
-    event CatUnbound(
-        uint256 indexed tokenId,
-        string indexed nfcUID,
-        address indexed wallet,
-        bool burned
-    );
-    event CatsInteracted(
-        uint256 indexed tokenId1,
-        uint256 indexed tokenId2,
-        address indexed initiator,
-        uint8 interactionType
-    );
-    event CatMoodChanged(uint256 indexed tokenId, uint8 oldMood, uint8 newMood);
-    event FriendshipLevelUp(
-        uint256 indexed tokenId,
-        uint256 oldLevel,
-        uint256 newLevel
-    );
-
     function setUp() public {
-        owner = makeAddr("owner");
-        authorizedMinter = makeAddr("authorizedMinter");
+        owner = address(this);
         user1 = makeAddr("user1");
         user2 = makeAddr("user2");
         unauthorizedUser = makeAddr("unauthorizedUser");
 
-        vm.startPrank(owner);
-        catNFT = new CatCardNFT(
-            "CatCardNFT",
-            "CCN",
-            "https://api.example.com/cat/"
-        );
-
-        // 设置授权铸造者
-        catNFT.setAuthorizedMinter(authorizedMinter, true);
-        vm.stopPrank();
+        nfcRegistry = new NFCWalletRegistry();
+        catNFT = new CatNFT();
     }
 
     // ============ 基础功能测试 ============
 
-    function testDeployment() public {
+    function testDeployment() public view {
         assertEq(catNFT.owner(), owner);
-        assertEq(catNFT.name(), "CatCardNFT");
-        assertEq(catNFT.symbol(), "CCN");
-        assertTrue(catNFT.authorizedMinters(authorizedMinter));
-        assertFalse(catNFT.authorizedMinters(unauthorizedUser));
+        assertEq(catNFT.name(), "Cat NFT");
+        assertEq(catNFT.symbol(), "CAT");
     }
 
-    function testSetAuthorizedMinter() public {
-        vm.prank(owner);
-        catNFT.setAuthorizedMinter(user1, true);
-        assertTrue(catNFT.authorizedMinters(user1));
-
-        vm.prank(owner);
-        catNFT.setAuthorizedMinter(user1, false);
-        assertFalse(catNFT.authorizedMinters(user1));
-    }
-
-    function testMintCatCard() public {
-        vm.prank(authorizedMinter);
-        uint256 tokenId = catNFT.mintCatCard(NFC_UID_1, user1);
-
-        assertEq(tokenId, 1);
-        assertEq(catNFT.ownerOf(tokenId), user1);
-        assertEq(catNFT.nfcToTokenId(NFC_UID_1), tokenId);
-
-                // 验证 NFC 映射
-        assertTrue(catNFT.nfcToTokenId(NFC_UID_1) > 0);
-    }
-
-    function testInteractWithCat() public {
-        vm.startPrank(authorizedMinter);
-        uint256 tokenId1 = catNFT.mintCatCard(NFC_UID_1, user1);
-        uint256 tokenId2 = catNFT.mintCatCard(NFC_UID_2, user2);
-        vm.stopPrank();
-
-        // user1 与 user2 的小猫交互
+    function testDrawCatNFT() public {
+        vm.deal(user1, 1 ether);
+        
         vm.prank(user1);
-        catNFT.interactWithCat(
-            NFC_UID_1,
-            NFC_UID_2,
-            CatCardNFT.InteractionType.Pet,
-            "Hello kitty!"
-        );
-
-        // 验证交互记录
-        CatCardNFT.InteractionRecord[] memory interactions1 = catNFT
-            .getCatInteractions(tokenId1);
-        CatCardNFT.InteractionRecord[] memory interactions2 = catNFT
-            .getCatInteractions(tokenId2);
-
-        assertEq(interactions1.length, 1);
-        assertEq(interactions2.length, 1);
-        assertEq(interactions1[0].interactor, user1);
-        assertEq(
-            uint8(interactions1[0].interactionType),
-            uint8(CatCardNFT.InteractionType.Pet)
-        );
+        catNFT.drawCatNFT{value: 0.1 ether}("TestCat");
+        
+        uint256[] memory userCats = catNFT.getUserCats(user1);
+        assertEq(userCats.length, 1);
+        assertEq(catNFT.ownerOf(userCats[0]), user1);
+        
+        CatNFT.CatInfo memory catInfo = catNFT.getCatInfo(userCats[0]);
+        assertEq(catInfo.name, "TestCat");
+        assertTrue(catInfo.mintedAt > 0);
     }
 
-    function testUnauthorizedCannotMint() public {
-        vm.prank(unauthorizedUser);
-        vm.expectRevert("Not authorized minter");
-        catNFT.mintCatCard(NFC_UID_1, user1);
+    function testDrawFeeRequirement() public {
+        vm.deal(user1, 1 ether);
+        
+        vm.prank(user1);
+        vm.expectRevert("Insufficient draw fee");
+        catNFT.drawCatNFT{value: 0.05 ether}("TestCat");
     }
 
-    function testGetWalletCats() public {
-        vm.startPrank(authorizedMinter);
-        uint256 tokenId1 = catNFT.mintCatCard(NFC_UID_1, user1);
-        uint256 tokenId2 = catNFT.mintCatCard(NFC_UID_2, user1);
+    function testDuplicateNameRejection() public {
+        vm.deal(user1, 1 ether);
+        vm.deal(user2, 1 ether);
+        
+        vm.prank(user1);
+        catNFT.drawCatNFT{value: 0.1 ether}("TestCat");
+        
+        vm.prank(user2);
+        vm.expectRevert("Cat name already used");
+        catNFT.drawCatNFT{value: 0.1 ether}("TestCat");
+    }
+
+    function testTransferCatNFT() public {
+        vm.deal(user1, 1 ether);
+        
+        vm.prank(user1);
+        catNFT.drawCatNFT{value: 0.1 ether}("TransferCat");
+        
+        uint256[] memory userCats = catNFT.getUserCats(user1);
+        uint256 tokenId = userCats[0];
+        
+        vm.prank(user1);
+        catNFT.transferCatNFT(tokenId, user2);
+        
+        assertEq(catNFT.ownerOf(tokenId), user2);
+        assertEq(catNFT.getUserCats(user1).length, 0);
+        assertEq(catNFT.getUserCats(user2).length, 1);
+    }
+
+    function testUpdateCatMetadata() public {
+        vm.deal(user1, 1 ether);
+        
+        vm.prank(user1);
+        catNFT.drawCatNFT{value: 0.1 ether}("MetadataCat");
+        
+        uint256[] memory userCats = catNFT.getUserCats(user1);
+        uint256 tokenId = userCats[0];
+        
+        vm.prank(user1);
+        catNFT.updateCatMetadata(tokenId, "Updated metadata");
+        
+        CatNFT.CatInfo memory catInfo = catNFT.getCatInfo(tokenId);
+        assertEq(catInfo.metadata, "Updated metadata");
+    }
+
+    function testGetRarityCounts() public {
+        vm.deal(user1, 10 ether);
+        
+        // Draw multiple cats to test rarity distribution
+        vm.startPrank(user1);
+        catNFT.drawCatNFT{value: 0.1 ether}("Cat1");
+        catNFT.drawCatNFT{value: 0.1 ether}("Cat2");
+        catNFT.drawCatNFT{value: 0.1 ether}("Cat3");
         vm.stopPrank();
+        
+        (uint256 rCount, uint256 srCount, uint256 ssrCount, uint256 urCount) = catNFT.getRarityCounts();
+        
+        // Should have at least some cats minted
+        assertTrue((rCount + srCount + ssrCount + urCount) >= 3);
+    }
 
-        uint256[] memory userCats = catNFT.getWalletCats(user1);
-        assertEq(userCats.length, 2);
+    function testNameAndColorChecks() public view {
+        // Test unused name and color
+        assertFalse(catNFT.isNameUsed("UnusedName"));
+        assertFalse(catNFT.isColorUsed("unused_color"));
+    }
 
-        // 验证返回的token ID是正确的
-        assertTrue(
-            (userCats[0] == tokenId1 && userCats[1] == tokenId2) ||
-                (userCats[0] == tokenId2 && userCats[1] == tokenId1)
-        );
+    function testOnlyOwnerFunctions() public {
+        // Test setDrawFee
+        vm.prank(user1);
+        vm.expectRevert();
+        catNFT.setDrawFee(0.2 ether);
+        
+        // Owner should be able to set draw fee
+        vm.prank(owner);
+        catNFT.setDrawFee(0.2 ether);
+        
+        // Test withdraw
+        vm.prank(user1);
+        vm.expectRevert();
+        catNFT.withdraw();
     }
 }

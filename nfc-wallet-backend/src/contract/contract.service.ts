@@ -1,56 +1,19 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ethers } from 'ethers';
+import * as path from 'path';
+import * as fs from 'fs';
 
-// 合约ABI - 实际部署时需要从编译产物中获取完整ABI
-const DOMAIN_REGISTRY_ABI = [
-    'function register(string memory domainPrefix) external payable',
-    'function isDomainAvailable(string memory domainPrefix) external view returns (bool)',
-    'function resolveDomain(string memory domain) external view returns (address)',
-    'function reverseResolve(address addr) external view returns (string memory)',
-    'function transferDomain(string memory domain, address to) external',
-    'function setPrimaryDomain(string memory domain) external',
-    'function getUserDomains(address user) external view returns (string[] memory)',
-    'event DomainRegistered(string indexed domain, address indexed owner, uint256 registeredAt, uint256 expiresAt)'
-];
-
-const NFC_REGISTRY_ABI = [
-    'function bindNFCWallet(string memory nfcUID, address walletAddress) external',
-    'function unbindNFCWallet(string memory nfcUID, bytes memory ownerSignature) external',
-    'function emergencyUnbindNFCWallet(string memory nfcUID) external',
-    'function detectAndBindBlankCard(string memory nfcUID, address newWalletAddress) external returns (bool)',
-    'function initializeBlankCard(string memory nfcUID, string memory initMetadata) external',
-    'function isNFCBound(string memory nfcUID) external view returns (bool)',
-    'function isBlankCard(string memory nfcUID) external view returns (bool)',
-    'function getNFCStatus(string memory nfcUID) external view returns (uint8)',
-    'function getNFCWallet(string memory nfcUID) external view returns (address)',
-    'function getWalletActiveNFCs(address walletAddress) external view returns (string[] memory)',
-    'function getWalletCardStats(address walletAddress) external view returns (uint256 totalCards, uint256 activeCards, uint256 blankCards)',
-    'function getNFCHistory(string memory nfcUID) external view returns (tuple(address,uint256,uint256,bool,bool,string)[] memory)',
-    'event NFCWalletBound(string indexed nfcUID, address indexed walletAddress, uint256 boundAt)',
-    'event NFCWalletUnbound(string indexed nfcUID, address indexed walletAddress, uint256 unboundAt, bool cardReset)',
-    'event BlankCardDetected(string indexed nfcUID, address indexed newWallet, uint256 timestamp)',
-    'event CardInitialized(string indexed nfcUID, address indexed walletAddress, uint256 timestamp)'
-];
-
-// 合约ABI - 更新为小猫NFT系统
-const CAT_CARD_NFT_ABI = [
-    'function mintCatCard(string memory nfcUID, address initialOwner) external returns (uint256)',
-    'function unbindAndTransferCat(string memory nfcUID, address newOwner, bytes memory ownerSignature) external',
-    'function unbindAndBurnCat(string memory nfcUID, bytes memory ownerSignature) external',
-    'function interactWithCat(string memory myNfcUID, string memory targetNfcUID, uint8 interactionType, string memory message) external',
-    'function getCatInfo(uint256 tokenId) external view returns (tuple(string,string,uint8,uint8,uint256,uint256,uint256,uint256,bool,address,string))',
-    'function getWalletCats(address wallet) external view returns (uint256[] memory)',
-    'function getCatInteractions(uint256 tokenId) external view returns (tuple(uint256,address,uint8,string)[] memory)',
-    'function getTokenIdByNFC(string memory nfcUID) external view returns (uint256)',
-    'function setAuthorizedMinter(address minter, bool authorized) external',
-    'event CatMinted(uint256 indexed tokenId, string indexed nfcUID, address indexed owner, string catName, uint8 breed)',
-    'event CatBound(uint256 indexed tokenId, string indexed nfcUID, address indexed wallet)',
-    'event CatUnbound(uint256 indexed tokenId, string indexed nfcUID, address indexed wallet, bool burned)',
-    'event CatsInteracted(uint256 indexed tokenId1, uint256 indexed tokenId2, address indexed initiator, uint8 interactionType)',
-    'event CatMoodChanged(uint256 indexed tokenId, uint8 oldMood, uint8 newMood)',
-    'event FriendshipLevelUp(uint256 indexed tokenId, uint256 oldLevel, uint256 newLevel)'
-];
+// 导入合约ABI - 直接读取源文件
+const INJDomainNFTABI = JSON.parse(
+    fs.readFileSync(path.join(__dirname, '../../src/contract/abis/INJDomainNFT.json'), 'utf8')
+).abi;
+const NFCWalletRegistryABI = JSON.parse(
+    fs.readFileSync(path.join(__dirname, '../../src/contract/abis/NFCWalletRegistry.json'), 'utf8')
+).abi;
+const CatNFTABI = JSON.parse(
+    fs.readFileSync(path.join(__dirname, '../../src/contract/abis/CatNFT.json'), 'utf8')
+).abi;
 
 @Injectable()
 export class ContractService {
@@ -85,12 +48,12 @@ export class ContractService {
         // 初始化合约实例
         const domainRegistryAddress = this.configService.get<string>('DOMAIN_REGISTRY_ADDRESS');
         const nfcRegistryAddress = this.configService.get<string>('NFC_REGISTRY_ADDRESS');
-        const nfcCardNFTAddress = this.configService.get<string>('NFC_CARD_NFT_ADDRESS');
+        const catNFTAddress = this.configService.get<string>('CAT_NFT_ADDRESS');
 
         if (domainRegistryAddress) {
             this.domainRegistryContract = new ethers.Contract(
                 domainRegistryAddress,
-                DOMAIN_REGISTRY_ABI,
+                INJDomainNFTABI,
                 this.wallet || this.provider
             );
         }
@@ -98,15 +61,15 @@ export class ContractService {
         if (nfcRegistryAddress) {
             this.nfcRegistryContract = new ethers.Contract(
                 nfcRegistryAddress,
-                NFC_REGISTRY_ABI,
+                NFCWalletRegistryABI,
                 this.wallet || this.provider
             );
         }
 
-        if (nfcCardNFTAddress) {
+        if (catNFTAddress) {
             this.nfcCardNFTContract = new ethers.Contract(
-                nfcCardNFTAddress,
-                CAT_CARD_NFT_ABI, // 使用新的小猫NFT ABI
+                catNFTAddress,
+                CatNFTABI,
                 this.wallet || this.provider
             );
         }
@@ -117,14 +80,14 @@ export class ContractService {
     // =================
 
     /**
-     * 检查域名是否可用
+     * 检查域名是否可用（自动添加advx-前缀）
      */
-    async isDomainAvailable(domainPrefix: string): Promise<boolean> {
+    async isDomainAvailable(domainSuffix: string): Promise<boolean> {
         try {
             if (!this.domainRegistryContract) {
                 throw new Error('Domain registry contract not initialized');
             }
-            return await this.domainRegistryContract.isDomainAvailable(domainPrefix);
+            return await this.domainRegistryContract.isDomainAvailable(domainSuffix);
         } catch (error) {
             console.error('Error checking domain availability:', error);
             return false;
@@ -132,34 +95,37 @@ export class ContractService {
     }
 
     /**
-     * 注册域名到链上
+     * 注册域名到链上（需要NFC绑定）
      */
-    async registerDomain(domainPrefix: string, userAddress: string): Promise<string | null> {
+    async registerDomain(domainSuffix: string, nfcUID: string, metadataURI?: string): Promise<string | null> {
         try {
             if (!this.domainRegistryContract || !this.wallet) {
                 throw new Error('Contract or wallet not initialized');
             }
 
             // 检查域名是否可用
-            const isAvailable = await this.isDomainAvailable(domainPrefix);
+            const isAvailable = await this.isDomainAvailable(domainSuffix);
             if (!isAvailable) {
                 throw new Error('Domain not available');
             }
 
             // 获取注册费用
-            const registrationFee = ethers.parseEther('0.001'); // 0.001 INJ
+            const registrationFee = ethers.parseEther('0'); // 免费注册
 
             // 发送注册交易
-            const tx = await this.domainRegistryContract.register(domainPrefix, {
+            const tx = await this.domainRegistryContract.mintDomainNFT(
+                domainSuffix, 
+                nfcUID, 
+                metadataURI || '', {
                 value: registrationFee,
-                gasLimit: 300000
+                gasLimit: 500000
             });
 
             // 等待交易确认
             const receipt = await tx.wait();
 
             if (receipt.status === 1) {
-                const fullDomain = `${domainPrefix}.inj`;
+                const fullDomain = `advx-${domainSuffix}.inj`;
                 console.log(`Domain ${fullDomain} registered successfully`);
                 return fullDomain;
             } else {
@@ -214,7 +180,23 @@ export class ContractService {
                 return [];
             }
 
-            return await this.domainRegistryContract.getUserDomains(userAddress);
+            // 获取用户的所有tokenId
+            const tokenIds = await this.domainRegistryContract.getUserTokenIds(userAddress);
+            const domains: string[] = [];
+
+            // 遍历每个tokenId获取域名信息
+            for (const tokenId of tokenIds) {
+                try {
+                    const domainInfo = await this.domainRegistryContract.getDomainInfo(tokenId);
+                    if (domainInfo.isActive) {
+                        domains.push(domainInfo.domainName);
+                    }
+                } catch (error) {
+                    console.error(`Error getting domain info for tokenId ${tokenId}:`, error);
+                }
+            }
+
+            return domains;
         } catch (error) {
             console.error('Error getting user domains:', error);
             return [];
@@ -590,37 +572,7 @@ export class ContractService {
         }
     }
 
-    /**
-     * NFC卡片社交交互功能
-     */
-    async interactWithCard(
-        myNfcUID: string,
-        targetNfcUID: string,
-        interactionType: 'battle' | 'social' | 'trade',
-        userAddress: string
-    ): Promise<boolean> {
-        try {
-            if (!this.nfcCardNFTContract) {
-                throw new Error('NFT contract not initialized');
-            }
 
-            // 构建交易参数，让用户自己发送交易
-            const data = this.nfcCardNFTContract.interface.encodeFunctionData(
-                'interactWithCat',
-                [myNfcUID, targetNfcUID, interactionType, ''] // 小猫NFT交互类型是uint8
-            );
-
-            console.log(`Card interaction initiated: ${myNfcUID} -> ${targetNfcUID}, type: ${interactionType}`);
-            console.log(`Transaction data: ${data}`);
-            console.log(`Contract address: ${await this.nfcCardNFTContract.getAddress()}`);
-
-            // 返回true表示交易数据准备完成，实际发送由前端处理
-            return true;
-        } catch (error) {
-            console.error('Error preparing card interaction:', error);
-            return false;
-        }
-    }
 
     /**
      * 解绑并转移NFT所有权
@@ -690,7 +642,7 @@ export class ContractService {
                 return [];
             }
 
-            return await this.nfcCardNFTContract.getCatInteractions(tokenId); // 小猫NFT的交互历史
+            return await this.nfcCardNFTContract.getCatInteractions(tokenId); // 小猫NFT的历史记录
         } catch (error) {
             console.error('Error getting card ownership history:', error);
             return [];
@@ -711,7 +663,7 @@ export class ContractService {
                 return 0;
             }
 
-            // 小猫NFT没有直接的ownership count，因为它是社交互动的
+            // 小猫NFT是基于单一拥有者的简单抽卡系统
             // 这里返回0，表示没有直接的卡片所有权数量概念
             return 0;
         } catch (error) {
@@ -734,7 +686,7 @@ export class ContractService {
                 return false;
             }
 
-            // 小猫NFT没有直接的ownership history，因为它是社交互动的
+            // 小猫NFT是基于单一拥有者的简单抽卡系统
             // 这里返回false，表示没有直接的卡片所有权历史概念
             return false;
         } catch (error) {
@@ -757,7 +709,7 @@ export class ContractService {
                 return 0;
             }
 
-            // 小猫NFT没有直接的ownership duration，因为它是社交互动的
+            // 小猫NFT是基于单一拥有者的简单抽卡系统
             // 这里返回0，表示没有直接的卡片所有权时长概念
             return 0;
         } catch (error) {
@@ -783,7 +735,7 @@ export class ContractService {
             }
 
             // 批量获取所有者
-            // 小猫NFT没有直接的batchGetCurrentOwners，因为它是社交互动的
+            // 小猫NFT是基于单一拥有者的简单抽卡系统
             // 这里返回空数组，表示没有直接的批量获取所有者功能
             return [];
         } catch (error) {
@@ -976,7 +928,7 @@ export class ContractService {
                 return [];
             }
 
-            const tokenIds = await this.nfcCardNFTContract.getWalletCats(walletAddress);
+            const tokenIds = await this.nfcCardNFTContract.getUserCats(walletAddress);
             const cats = [];
 
             for (const tokenId of tokenIds) {
@@ -985,17 +937,11 @@ export class ContractService {
                     if (catInfo) {
                         cats.push({
                             tokenId: Number(tokenId),
-                            nfcUID: catInfo[0],
-                            catName: catInfo[1],
-                            breed: Number(catInfo[2]),
-                            mood: Number(catInfo[3]),
-                            friendshipLevel: Number(catInfo[4]),
-                            totalInteractions: Number(catInfo[5]),
-                            lastInteraction: Number(catInfo[6]),
-                            mintedAt: Number(catInfo[7]),
-                            isActive: catInfo[8],
-                            boundWallet: catInfo[9],
-                            imageURI: catInfo[10]
+                            name: catInfo.name,
+                            rarity: Number(catInfo.rarity),
+                            color: catInfo.color,
+                            mintedAt: Number(catInfo.mintedAt),
+                            metadata: catInfo.metadata
                         });
                     }
                 } catch (error) {
@@ -1010,77 +956,7 @@ export class ContractService {
         }
     }
 
-    /**
-     * 小猫社交交互
-     */
-    async interactWithCats(
-        myNfcUID: string,
-        targetNfcUID: string,
-        interactionType: number, // 0=Pet, 1=Play, 2=Feed, 3=Photo
-        message: string = '',
-        userAddress: string
-    ): Promise<{ success: boolean; transactionData?: any }> {
-        try {
-            if (!this.nfcCardNFTContract) {
-                throw new Error('NFT contract not initialized');
-            }
 
-            // 验证两个NFC都有对应的NFT
-            const myTokenId = await this.nfcCardNFTContract.getTokenIdByNFC(myNfcUID);
-            const targetTokenId = await this.nfcCardNFTContract.getTokenIdByNFC(targetNfcUID);
-
-            if (myTokenId === 0 || targetTokenId === 0) {
-                throw new Error('One or both NFCs do not have associated cat NFTs');
-            }
-
-            // 构建交易数据，让前端用户自己发送交易
-            const data = this.nfcCardNFTContract.interface.encodeFunctionData(
-                'interactWithCat',
-                [myNfcUID, targetNfcUID, interactionType, message]
-            );
-
-            return {
-                success: true,
-                transactionData: {
-                    to: await this.nfcCardNFTContract.getAddress(),
-                    data,
-                    gasLimit: 300000,
-                    value: '0'
-                }
-            };
-        } catch (error) {
-            console.error('Error preparing cat interaction:', error);
-            return { success: false };
-        }
-    }
-
-    /**
-     * 获取小猫的交互历史
-     */
-    async getCatInteractionHistory(nfcUID: string): Promise<any[]> {
-        try {
-            if (!this.nfcCardNFTContract) {
-                return [];
-            }
-
-            const tokenId = await this.nfcCardNFTContract.getTokenIdByNFC(nfcUID);
-            if (tokenId === 0) {
-                return [];
-            }
-
-            const interactions = await this.nfcCardNFTContract.getCatInteractions(tokenId);
-
-            return interactions.map((interaction: any) => ({
-                timestamp: Number(interaction[0]),
-                interactor: interaction[1],
-                interactionType: Number(interaction[2]),
-                message: interaction[3]
-            }));
-        } catch (error) {
-            console.error('Error getting cat interaction history:', error);
-            return [];
-        }
-    }
 
     /**
      * 检查用户是否有权限铸造NFT
