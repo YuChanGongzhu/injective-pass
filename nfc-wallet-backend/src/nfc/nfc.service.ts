@@ -523,7 +523,13 @@ export class NFCService {
      * 验证NFC UID格式
      */
     private validateUID(uid: string): boolean {
-        // 支持多种NFC UID格式
+        // 支持虚拟UID格式（为了确保用户一定能注册）
+        if (uid.startsWith('virtual:')) {
+            // 虚拟UID格式: virtual:timestamp:randompart
+            return /^virtual:[0-9a-f]+:[0-9a-f]+$/i.test(uid);
+        }
+
+        // 支持多种物理NFC UID格式
         const patterns = [
             /^[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}$/, // 4字节格式
             /^[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}$/, // 7字节格式

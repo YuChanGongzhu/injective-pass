@@ -365,9 +365,41 @@ export class InjectiveService {
         usd?: string;
     }> {
         try {
-            const injectiveAddress = address.startsWith('inj')
-                ? address
-                : getInjectiveAddress(address);
+            console.log(`获取账户余额 - 输入地址: "${address}", 长度: ${address?.length}`);
+            
+            // 验证输入地址
+            if (!address || typeof address !== 'string') {
+                throw new Error(`无效的地址参数: ${address}`);
+            }
+            
+            let injectiveAddress: string;
+            
+            if (address.startsWith('inj')) {
+                // 验证 Injective 地址格式和长度
+                if (address.length !== 42) {
+                    throw new Error(`无效的Injective地址长度: ${address.length}, 应该是42位. 地址: "${address}"`);
+                }
+                injectiveAddress = address;
+            } else if (address.startsWith('0x')) {
+                // 验证以太坊地址格式和长度
+                if (address.length !== 42) {
+                    throw new Error(`无效的以太坊地址长度: ${address.length}, 应该是42位. 地址: "${address}"`);
+                }
+                try {
+                    injectiveAddress = getInjectiveAddress(address);
+                } catch (conversionError) {
+                    throw new Error(`地址转换失败: ${conversionError.message}. 原地址: "${address}"`);
+                }
+            } else {
+                throw new Error(`不支持的地址格式: "${address}"`);
+            }
+            
+            console.log(`转换后的Injective地址: "${injectiveAddress}", 长度: ${injectiveAddress?.length}`);
+            
+            // 验证转换后的地址格式
+            if (!injectiveAddress.startsWith('inj') || injectiveAddress.length !== 42) {
+                throw new Error(`转换后的地址格式无效: "${injectiveAddress}"`);
+            }
 
             // 使用 ChainRestBankApi 来获取余额
             const chainRestBankApi = new ChainRestBankApi(this.endpoints.rest);

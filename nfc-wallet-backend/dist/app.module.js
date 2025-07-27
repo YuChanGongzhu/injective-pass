@@ -16,6 +16,7 @@ const crypto_module_1 = require("./crypto/crypto.module");
 const contract_module_1 = require("./contract/contract.module");
 const chat_module_1 = require("./chat/chat.module");
 const tools_module_1 = require("./tools/tools.module");
+const health_controller_1 = require("./health/health.controller");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -34,6 +35,7 @@ exports.AppModule = AppModule = __decorate([
             chat_module_1.ChatModule,
             tools_module_1.ToolsModule
         ],
+        controllers: [health_controller_1.HealthController],
     })
 ], AppModule);
 //# sourceMappingURL=app.module.js.map

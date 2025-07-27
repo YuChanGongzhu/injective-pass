@@ -460,8 +460,12 @@ async function startNFCScan() {
             clearTimeout(scanTimeout);
             console.log('NFC tag detected:', event);
 
-            // 获取UID (优先使用serialNumber，否则生成唯一ID)
-            const uid = event.serialNumber || `nfc-${Date.now()}-${Math.random().toString(36).substr(2, 8)}`;
+            // 获取UID (优先使用serialNumber，否则生成符合格式的备用UID)
+            let uid = event.serialNumber;
+            if (!uid) {
+                // 如果没有serialNumber，生成7字节格式的NFC UID
+                uid = generateValidUID('nfc');
+            }
             appState.nfcUid = uid;
 
             statusText.textContent = '扫描成功！正在处理...';
@@ -512,8 +516,13 @@ async function handleNFCScan() {
         // 模拟NFC扫描过程（稍微长一点让用户感觉真实）
         await new Promise(resolve => setTimeout(resolve, 2500));
 
-        // 生成符合格式的模拟UID
-        const mockUid = `04:f3:a1:8a:b2:5d:80:${Math.random().toString(16).substr(2, 8)}`;
+        // 生成符合格式的模拟NFC UID（7字节格式）
+        const generateRandomHex = (bytes) => {
+            return Array.from({length: bytes}, () => 
+                Math.floor(Math.random() * 256).toString(16).padStart(2, '0')
+            ).join(':').toUpperCase();
+        };
+        const mockUid = generateRandomHex(7); // 生成7字节的NFC UID
         appState.nfcUid = mockUid;
 
         console.log('Mock NFC UID generated:', mockUid);
@@ -536,17 +545,43 @@ async function handleNFCScan() {
     }
 }
 
+// 统一的UID生成函数
+function generateValidUID(type = 'virtual') {
+    if (type === 'virtual') {
+        // 生成虚拟UID格式: virtual:timestamp:randompart（全部十六进制）
+        const timestamp = Date.now().toString(16);
+        const randomPart = Math.random().toString(16).substr(2, 8);
+        return `virtual:${timestamp}:${randomPart}`;
+    } else {
+        // 生成7字节格式的NFC UID
+        const generateRandomHex = (bytes) => {
+            return Array.from({length: bytes}, () => 
+                Math.floor(Math.random() * 256).toString(16).padStart(2, '0')
+            ).join(':').toUpperCase();
+        };
+        return generateRandomHex(7);
+    }
+}
+
+// 确保用户有有效的UID
+function ensureValidUID() {
+    if (!appState.nfcUid) {
+        appState.nfcUid = generateValidUID('virtual');
+        console.log('Generated fallback UID:', appState.nfcUid);
+    }
+}
+
 // 配置后端 API 基础 URL - 动态适应不同环境
 const API_BASE_URL = (() => {
     const currentHost = window.location.hostname;
     const currentPort = window.location.port;
     const currentProtocol = window.location.protocol;
-    
+
     // 如果是 localhost 或 127.0.0.1，使用本地配置
     if (currentHost === 'localhost' || currentHost === '127.0.0.1') {
         return 'http://localhost:8080';
     }
-    
+
     // 如果是服务器环境，使用相同主机的8080端口
     return `${currentProtocol}//${currentHost}:8080`;
 })();
@@ -625,8 +660,12 @@ const apiClient = {
                     clearTimeout(timeout);
                     console.log('NFC tag detected:', event);
 
-                    // 获取UID (使用serialNumber)
-                    const uid = event.serialNumber || `nfc:${Date.now()}`;
+                    // 获取UID (优先使用serialNumber，否则生成符合格式的备用UID)
+                    let uid = event.serialNumber;
+                    if (!uid) {
+                        // 如果没有serialNumber，生成7字节格式的NFC UID
+                        uid = generateValidUID('nfc');
+                    }
                     appState.nfcUid = uid;
 
                     console.log('NFC UID read:', uid);
@@ -685,7 +724,7 @@ const apiClient = {
         try {
             console.log('Generating wallet for UID:', uid);
             console.log('Using API URL:', API_BASE_URL);
-            
+
             // 首先检查API连接
             const apiConnected = await apiClient.checkApiConnection();
             if (!apiConnected) {
@@ -696,8 +735,22 @@ const apiClient = {
                     privateKey: 'hidden_for_security'
                 };
             }
+
+            // 检查是否为虚拟UID（没有实际NFC设备的用户）
+            const isVirtualUID = uid && uid.startsWith('virtual:');
             
+            if (isVirtualUID) {
+                console.log('Processing virtual UID, creating new account...');
+                // 对于虚拟UID，直接注册新账户，系统会自动创建钱包和发送初始资金
+            }
+
             const result = await apiClient.registerNFC(uid);
+            
+            // 如果是新创建的账户，显示额外的成功信息
+            if (isVirtualUID && result.initialFunded) {
+                console.log('New virtual account created with initial funding');
+            }
+            
             return {
                 publicKey: result.address,
                 privateKey: 'hidden_for_security' // 出于安全考虑不返回私钥
@@ -717,14 +770,14 @@ const apiClient = {
     checkDomainAvailability: async (domain) => {
         try {
             console.log('Checking domain availability:', domain);
-            
+
             // 首先检查API连接
             const apiConnected = await apiClient.checkApiConnection();
             if (!apiConnected) {
                 console.warn('API server not available, using mock response');
                 return Math.random() > 0.2; // 80%的概率可用
             }
-            
+
             const response = await fetch(`${API_BASE_URL}/api/nfc/domain/check?domain=${encodeURIComponent(domain)}`);
 
             if (!response.ok) {
@@ -744,12 +797,15 @@ const apiClient = {
     // 创建域名并铸造NFT
     mintNft: async (domain, uid, address) => {
         try {
+            console.log('Minting NFT for domain:', domain, 'UID:', uid);
+            
             // 使用真实 API 创建域名
             const result = await apiClient.createDomain(uid, domain);
             if (result.success) {
+                console.log('Domain creation successful:', result);
                 return {
                     name: `${domain}.Inj`,
-                    imageUrl: `https://placehold.co/400x600/FFFFFF/1F2937?text=${domain}.Inj`,
+                    imageUrl: result.imageUrl || `https://placehold.co/400x600/FFFFFF/1F2937?text=${domain}.Inj`,
                 };
             }
         } catch (error) {
@@ -757,6 +813,7 @@ const apiClient = {
         }
 
         // 回退到模拟数据
+        console.log('Using mock NFT data for domain:', domain);
         await new Promise(resolve => setTimeout(resolve, 3000));
         return {
             name: `${domain}.Inj`,
@@ -871,6 +928,11 @@ function navigateTo(screenId) {
             container.classList.add('active');
             startNFCScan();
         }, 100);
+    }
+    
+    // 当进入minting页面时，确保有有效的UID
+    if (screenId === 'minting-screen') {
+        ensureValidUID();
     }
 }
 
@@ -1147,9 +1209,9 @@ checkDomainBtn.addEventListener('click', async () => {
         document.getElementById('mint-btn').addEventListener('click', handleMint);
     } else {
         mintingFeedbackEl.innerHTML = `
-  <p class="feedback-error">域名已被注册</p>
-  <button id="mint-btn" class="btn btn-secondary" disabled style="opacity: 0.5; cursor: not-allowed;">铸造并激活</button>
-`;
+            <p class="feedback-error">域名已被注册</p>
+            <button id="mint-btn" class="btn btn-secondary" disabled style="opacity: 0.5; cursor: not-allowed;">铸造并激活</button>
+        `;
     }
 
     checkDomainBtn.disabled = false;
@@ -1159,6 +1221,13 @@ checkDomainBtn.addEventListener('click', async () => {
 async function handleMint() {
     mintingStepDomain.style.display = 'none';
     mintingStepMinting.style.display = 'block';
+
+    // 确保有有效的UID
+    if (!appState.nfcUid) {
+        console.log('No NFC UID found, generating virtual UID...');
+        appState.nfcUid = generateValidUID('virtual');
+        console.log('Generated virtual UID:', appState.nfcUid);
+    }
 
     mintingStatusEl.textContent = t('mint.generating');
     const wallet = await apiClient.generateWallet(appState.nfcUid);

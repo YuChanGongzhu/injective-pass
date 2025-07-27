@@ -25,10 +25,9 @@ let InjectiveService = class InjectiveService {
     constructor(configService) {
         this.configService = configService;
         this.masterPrivateKey = this.configService.get('CONTRACT_PRIVATE_KEY');
-        this.network = this.configService.get('NODE_ENV') === 'production'
-            ? networks_1.Network.Mainnet
-            : networks_1.Network.TestnetSentry;
+        this.network = networks_1.Network.TestnetSentry;
         this.endpoints = (0, networks_1.getNetworkEndpoints)(this.network);
+        console.log(`网络已锁定为测试网: ${this.network}`);
         const rpcUrl = this.configService.get('INJECTIVE_RPC_URL');
         this.evmProvider = new ethers_1.JsonRpcProvider(rpcUrl);
         this.evmWallet = new ethers_1.Wallet(this.masterPrivateKey, this.evmProvider);
@@ -39,21 +38,38 @@ let InjectiveService = class InjectiveService {
             const nfcRegistryAddress = this.configService.get('NFC_REGISTRY_ADDRESS');
             const domainRegistryAddress = this.configService.get('DOMAIN_REGISTRY_ADDRESS');
             const catNFTAddress = this.configService.get('CAT_NFT_ADDRESS');
+            if (!this.evmProvider) {
+                throw new Error('EVM Provider 未正确初始化');
+            }
+            if (!this.evmWallet) {
+                throw new Error('EVM Wallet 未正确初始化');
+            }
             if (nfcRegistryAddress) {
+                if (!nfcRegistryAddress.startsWith('0x') || nfcRegistryAddress.length !== 42) {
+                    throw new Error(`无效的NFC注册表合约地址格式: ${nfcRegistryAddress}`);
+                }
                 this.nfcRegistryContract = new ethers_1.Contract(nfcRegistryAddress, NFCWalletRegistryABI, this.evmWallet);
                 console.log(`NFCWalletRegistry 合约初始化成功: ${nfcRegistryAddress}`);
             }
             if (domainRegistryAddress) {
+                if (!domainRegistryAddress.startsWith('0x') || domainRegistryAddress.length !== 42) {
+                    throw new Error(`无效的域名注册表合约地址格式: ${domainRegistryAddress}`);
+                }
                 this.domainNFTContract = new ethers_1.Contract(domainRegistryAddress, INJDomainNFTABI, this.evmWallet);
                 console.log(`INJDomainNFT 合约初始化成功: ${domainRegistryAddress}`);
             }
             if (catNFTAddress) {
+                if (!catNFTAddress.startsWith('0x') || catNFTAddress.length !== 42) {
+                    throw new Error(`无效的CatNFT合约地址格式: ${catNFTAddress}`);
+                }
                 this.catNFTContract = new ethers_1.Contract(catNFTAddress, CatNFTABI, this.evmWallet);
                 console.log(`CatNFT 合约初始化成功: ${catNFTAddress}`);
             }
+            console.log(`所有合约初始化完成，网络: ${this.network}, Chain ID: ${this.getChainId()}`);
         }
         catch (error) {
             console.error('合约初始化失败:', error);
+            throw error;
         }
     }
     getChainId() {
@@ -227,9 +243,35 @@ let InjectiveService = class InjectiveService {
     }
     async getAccountBalance(address) {
         try {
-            const injectiveAddress = address.startsWith('inj')
-                ? address
-                : (0, sdk_ts_1.getInjectiveAddress)(address);
+            console.log(`获取账户余额 - 输入地址: "${address}", 长度: ${address?.length}`);
+            if (!address || typeof address !== 'string') {
+                throw new Error(`无效的地址参数: ${address}`);
+            }
+            let injectiveAddress;
+            if (address.startsWith('inj')) {
+                if (address.length !== 42) {
+                    throw new Error(`无效的Injective地址长度: ${address.length}, 应该是42位. 地址: "${address}"`);
+                }
+                injectiveAddress = address;
+            }
+            else if (address.startsWith('0x')) {
+                if (address.length !== 42) {
+                    throw new Error(`无效的以太坊地址长度: ${address.length}, 应该是42位. 地址: "${address}"`);
+                }
+                try {
+                    injectiveAddress = (0, sdk_ts_1.getInjectiveAddress)(address);
+                }
+                catch (conversionError) {
+                    throw new Error(`地址转换失败: ${conversionError.message}. 原地址: "${address}"`);
+                }
+            }
+            else {
+                throw new Error(`不支持的地址格式: "${address}"`);
+            }
+            console.log(`转换后的Injective地址: "${injectiveAddress}", 长度: ${injectiveAddress?.length}`);
+            if (!injectiveAddress.startsWith('inj') || injectiveAddress.length !== 42) {
+                throw new Error(`转换后的地址格式无效: "${injectiveAddress}"`);
+            }
             const chainRestBankApi = new sdk_ts_1.ChainRestBankApi(this.endpoints.rest);
             const balancesResponse = await chainRestBankApi.fetchBalances(injectiveAddress);
             const injBalance = balancesResponse.balances.find(balance => balance.denom === 'inj');
@@ -319,9 +361,19 @@ let InjectiveService = class InjectiveService {
             if (!this.domainNFTContract) {
                 throw new Error('域名NFT合约未初始化');
             }
+            let ethAddress;
+            if (ownerAddress.startsWith('inj')) {
+                ethAddress = (0, sdk_ts_1.getEthereumAddress)(ownerAddress);
+            }
+            else if (ownerAddress.startsWith('0x')) {
+                ethAddress = ownerAddress;
+            }
+            else {
+                throw new Error('无效的地址格式');
+            }
             const domainPrefix = domainName.replace('.inj', '');
             const metadataURI = 'https://bafybeih4nkltzoflarix3ghpjpemjyg2vcu2sywi4wku4uthhacs5uoh2a.ipfs.w3s.link/fir.png';
-            console.log(`开始铸造域名NFT: ${domainName} -> ${ownerAddress}, NFC: ${nfcUID}`);
+            console.log(`开始铸造域名NFT: ${domainName} -> ${ownerAddress} (${ethAddress}), NFC: ${nfcUID}`);
             console.log(`使用元数据URI: ${metadataURI}`);
             const tx = await this.domainNFTContract.mintDomainNFT(domainPrefix, nfcUID, metadataURI, {
                 gasLimit: 500000,
@@ -367,7 +419,17 @@ let InjectiveService = class InjectiveService {
             if (!this.catNFTContract) {
                 throw new Error('小猫NFT合约未初始化');
             }
-            console.log(`开始小猫NFT抽卡: ${catName} -> ${ownerAddress}`);
+            let ethAddress;
+            if (ownerAddress.startsWith('inj')) {
+                ethAddress = (0, sdk_ts_1.getEthereumAddress)(ownerAddress);
+            }
+            else if (ownerAddress.startsWith('0x')) {
+                ethAddress = ownerAddress;
+            }
+            else {
+                throw new Error('无效的地址格式');
+            }
+            console.log(`开始小猫NFT抽卡: ${catName} -> ${ownerAddress} (${ethAddress})`);
             const tx = await this.catNFTContract.drawCatNFT(catName, {
                 gasLimit: 500000,
                 gasPrice: (0, ethers_1.parseEther)('0.00000002'),
@@ -480,7 +542,18 @@ let InjectiveService = class InjectiveService {
         }
         try {
             console.log(`开始绑定空白NFC到链上: ${nfcUID} -> ${walletAddress}`);
-            const tx = await this.nfcRegistryContract.detectAndBindBlankCard(nfcUID, walletAddress, {
+            let ethAddress;
+            if (walletAddress.startsWith('inj')) {
+                ethAddress = (0, sdk_ts_1.getEthereumAddress)(walletAddress);
+            }
+            else if (walletAddress.startsWith('0x')) {
+                ethAddress = walletAddress;
+            }
+            else {
+                throw new Error('无效的地址格式');
+            }
+            console.log(`使用以太坊格式地址进行合约调用: ${ethAddress}`);
+            const tx = await this.nfcRegistryContract.detectAndBindBlankCard(nfcUID, ethAddress, {
                 gasLimit: 500000,
                 gasPrice: (0, ethers_1.parseEther)('0.00000002'),
             });
