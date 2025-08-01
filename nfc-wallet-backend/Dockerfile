@@ -1,8 +1,14 @@
 # 使用官方Node.js 18镜像作为基础镜像
 FROM node:18-alpine
 
-# 安装必要的系统依赖
-RUN apk add --no-cache openssl curl
+# 安装必要的系统依赖，包括编译工具
+RUN apk add --no-cache \
+    openssl \
+    curl \
+    python3 \
+    make \
+    g++ \
+    libc6-compat
 
 # 设置工作目录
 WORKDIR /app
@@ -11,7 +17,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # 安装依赖
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # 复制项目文件
 COPY . .

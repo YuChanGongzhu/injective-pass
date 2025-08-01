@@ -1,10 +1,12 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, Length, IsOptional } from 'class-validator';
+import { IsString, IsNotEmpty, Length, Matches } from 'class-validator';
 
 export class RegisterDomainDto {
     @ApiProperty({
         description: 'NFC卡片的唯一标识符',
-        example: '04:f3:a1:8a:b2:5d:80:abc123',
+        example: '04:f3:a1:8a:b2:5d:80',
+        minLength: 1,
+        maxLength: 255,
     })
     @IsString()
     @IsNotEmpty()
@@ -12,12 +14,18 @@ export class RegisterDomainDto {
     uid: string;
 
     @ApiProperty({
-        description: '域名前缀（不包含.inj后缀）',
+        description: '域名前缀（不包含.inj后缀），3-20字符，只能包含字母、数字和连字符，不能以连字符开始或结束',
         example: 'alice',
+        minLength: 3,
+        maxLength: 20,
+        pattern: '^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$',
     })
     @IsString()
     @IsNotEmpty()
-    @Length(3, 30)
+    @Length(3, 20)
+    @Matches(/^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$/, {
+        message: '域名格式无效：只能包含字母、数字和连字符，不能以连字符开始或结束'
+    })
     domainPrefix: string;
 }
 
@@ -45,12 +53,6 @@ export class DomainNFTResponseDto {
         example: '2023-01-01T00:00:00.000Z',
     })
     registeredAt: Date;
-
-    @ApiProperty({
-        description: '域名NFT图片URL',
-        example: 'https://bafybeih4nkltzoflarix3ghpjpemjyg2vcu2sywi4wku4uthhacs5uoh2a.ipfs.w3s.link/fir.png',
-    })
-    imageUrl: string;
 }
 
 export class DomainAvailabilityDto {

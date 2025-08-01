@@ -4,6 +4,16 @@ pragma solidity 0.8.30;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 
+// CatNFT合约接口
+interface ICatNFT {
+    function authorizeNewNFCUser(string memory nfcUID, address userWallet) external;
+}
+
+// INJDomainNFT合约接口
+interface IINJDomainNFT {
+    function authorizeNewNFCUser(string memory nfcUID, address userWallet) external;
+}
+
 /**
  * @title NFCWalletRegistry
  * @dev NFC钱包注册系统，实现账户与NFC卡片的一一对应关系
@@ -30,6 +40,12 @@ contract NFCWalletRegistry is Ownable {
 
     uint256 public totalBindings; // 总绑定数量
     uint256 public totalUnbindings; // 总解绑数量
+    
+    // CatNFT合约地址
+    ICatNFT public catNFTContract;
+    
+    // INJDomainNFT合约地址
+    IINJDomainNFT public domainNFTContract;
 
     // 事件
     event NFCWalletBound(
@@ -108,6 +124,24 @@ contract NFCWalletRegistry is Ownable {
         // 建立钱包到NFC的一一对应关系
         walletToNFC[newWalletAddress] = nfcUID;
         totalBindings++;
+
+        // 自动授权用户为CatNFT合约的操作者
+        if (address(catNFTContract) != address(0)) {
+            try catNFTContract.authorizeNewNFCUser(nfcUID, newWalletAddress) {
+                // 授权成功
+            } catch {
+                // 授权失败，但不影响绑定过程
+            }
+        }
+
+        // 自动授权用户为INJDomainNFT合约的操作者
+        if (address(domainNFTContract) != address(0)) {
+            try domainNFTContract.authorizeNewNFCUser(nfcUID, newWalletAddress) {
+                // 授权成功
+            } catch {
+                // 授权失败，但不影响绑定过程
+            }
+        }
 
         emit BlankCardDetected(nfcUID, newWalletAddress, block.timestamp);
         emit NFCWalletBound(nfcUID, newWalletAddress, block.timestamp);
@@ -304,6 +338,26 @@ contract NFCWalletRegistry is Ownable {
     ) external view returns (NFCBinding[] memory) {
         return nfcHistory[nfcUID];
     }
+
+    /**
+     * @dev 设置CatNFT合约地址
+     * @param _catNFTContract CatNFT合约地址
+     */
+    function setCatNFTContract(address _catNFTContract) external onlyOwner {
+        require(_catNFTContract != address(0), "Invalid contract address");
+        catNFTContract = ICatNFT(_catNFTContract);
+    }
+
+    /**
+     * @dev 设置INJDomainNFT合约地址
+     * @param _domainNFTContract INJDomainNFT合约地址
+     */
+    function setDomainNFTContract(address _domainNFTContract) external onlyOwner {
+        require(_domainNFTContract != address(0), "Invalid contract address");
+        domainNFTContract = IINJDomainNFT(_domainNFTContract);
+    }
+
+    // 管理员函数
 
     /**
      * @dev 授权操作者

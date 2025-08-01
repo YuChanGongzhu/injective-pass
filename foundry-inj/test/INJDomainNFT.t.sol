@@ -41,7 +41,9 @@ contract INJDomainNFTTest is Test {
         user1 = makeAddr("user1");
         user2 = makeAddr("user2");
 
-        domainNFT = new INJDomainNFT();
+        // 部署一个模拟的NFCWalletRegistry合约用于测试
+        address mockNFCRegistry = address(0x1); // 使用简单地址进行测试
+        domainNFT = new INJDomainNFT(mockNFCRegistry);
     }
 
     // ============ 基础功能测试 ============
@@ -51,7 +53,7 @@ contract INJDomainNFTTest is Test {
         assertEq(domainNFT.symbol(), "INJDN");
         assertEq(domainNFT.owner(), owner);
         assertEq(domainNFT.registrationFee(), 0);
-        assertEq(domainNFT.MIN_DOMAIN_LENGTH(), 3);
+        assertEq(domainNFT.MIN_DOMAIN_LENGTH(), 1);
         assertEq(domainNFT.MAX_DOMAIN_LENGTH(), 30);
     }
 

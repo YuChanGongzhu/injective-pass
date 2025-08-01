@@ -18,7 +18,6 @@ const swagger_1 = require("@nestjs/swagger");
 const nfc_service_1 = require("./nfc.service");
 const register_nfc_dto_1 = require("./dto/register-nfc.dto");
 const unbind_nfc_dto_1 = require("./dto/unbind-nfc.dto");
-const unbind_response_dto_1 = require("./dto/unbind-response.dto");
 const wallet_response_dto_1 = require("./dto/wallet-response.dto");
 const domain_nft_dto_1 = require("./dto/domain-nft.dto");
 const cat_nft_dto_1 = require("./dto/cat-nft.dto");
@@ -51,14 +50,34 @@ let NFCController = class NFCController {
     async getWalletBalance(address) {
         return this.nfcService.getWalletBalance(address);
     }
-    async drawCatNFT(drawCatNFTDto) {
-        return this.nfcService.drawCatNFT(drawCatNFTDto);
-    }
     async getUserCatNFTs(uid) {
         return this.nfcService.getUserCatNFTs(uid);
     }
-    async getDomainNFT(uid) {
-        return this.nfcService.getUserDomainNFT(uid);
+    async getSocialStats(uid) {
+        return this.nfcService.getSocialStats(uid);
+    }
+    async checkInteraction(body) {
+        const hasInteracted = await this.nfcService.checkInteraction(body.nfc1, body.nfc2);
+        return {
+            hasInteracted,
+            nfc1: body.nfc1,
+            nfc2: body.nfc2
+        };
+    }
+    async socialInteraction(socialInteractionDto) {
+        return this.nfcService.socialInteraction(socialInteractionDto);
+    }
+    async drawCatWithTickets(drawCatWithTicketsDto) {
+        return this.nfcService.drawCatWithTickets(drawCatWithTicketsDto);
+    }
+    async drawCatTraditional(drawCatTraditionalDto) {
+        return this.nfcService.drawCatTraditional(drawCatTraditionalDto);
+    }
+    async getDrawStats(nfcUID) {
+        return this.nfcService.getDrawStats(nfcUID);
+    }
+    async getInteractedNFCs(nfcUID) {
+        return this.nfcService.getInteractedNFCs(nfcUID);
     }
 };
 exports.NFCController = NFCController;
@@ -67,7 +86,13 @@ __decorate([
     (0, common_1.HttpCode)(common_1.HttpStatus.OK),
     (0, swagger_1.ApiOperation)({
         summary: '注册NFC卡片',
-        description: '通过NFC UID注册并生成以太坊钱包，如果已存在则返回现有钱包信息。新建钱包将自动发送初始资金和铸造NFT',
+        description: `通过NFC UID注册并生成Injective钱包。功能包括：
+        1. 生成新的Injective钱包地址
+        2. 自动发送0.1 INJ初始资金
+        3. 在链上绑定NFC与钱包的关系
+        4. 如果NFC已注册则返回现有钱包信息
+        
+        注意：NFC UID格式支持十六进制字符串，可使用冒号分隔`
     }),
     (0, swagger_1.ApiResponse)({
         status: 200,
@@ -150,7 +175,14 @@ __decorate([
     (0, common_1.HttpCode)(common_1.HttpStatus.OK),
     (0, swagger_1.ApiOperation)({
         summary: '注册域名NFT',
-        description: '为NFC卡片注册域名NFT（需要初始资金）',
+        description: `为NFC卡片注册.inj域名NFT。要求：
+        1. NFC必须已注册并绑定钱包
+        2. 域名格式：3-20字符，只能包含字母、数字和连字符
+        3. 不能以连字符开始或结束
+        4. 域名全局唯一，不区分大小写
+        5. 免费注册（测试网络）
+        
+        成功后将在链上铸造域名NFT并绑定到NFC钱包`
     }),
     (0, swagger_1.ApiResponse)({
         status: 200,
@@ -171,7 +203,7 @@ __decorate([
                 message: {
                     type: 'string',
                     description: '错误信息',
-                    example: '域名已被占用',
+                    example: '域名已被占用或格式无效',
                 },
                 error: {
                     type: 'string',
@@ -191,20 +223,36 @@ __decorate([
     (0, common_1.HttpCode)(common_1.HttpStatus.OK),
     (0, swagger_1.ApiOperation)({
         summary: '解绑NFC卡片',
-        description: '解绑NFC卡片，删除钱包记录并进行链上解绑操作',
+        description: '解绑NFC卡片，删除钱包记录并销毁NFT',
     }),
     (0, swagger_1.ApiResponse)({
         status: 200,
         description: '成功解绑',
-        type: unbind_response_dto_1.UnbindResponseDto,
-    }),
-    (0, swagger_1.ApiResponse)({
-        status: 400,
-        description: '请求参数错误',
-    }),
-    (0, swagger_1.ApiResponse)({
-        status: 404,
-        description: 'NFC卡片不存在',
+        schema: {
+            type: 'object',
+            properties: {
+                success: {
+                    type: 'boolean',
+                    description: '是否成功',
+                    example: true,
+                },
+                nfcUnbound: {
+                    type: 'boolean',
+                    description: 'NFC是否已解绑',
+                    example: true,
+                },
+                nftBurned: {
+                    type: 'boolean',
+                    description: 'NFT是否已销毁',
+                    example: true,
+                },
+                message: {
+                    type: 'string',
+                    description: '操作结果消息',
+                    example: '解绑成功',
+                },
+            },
+        },
     }),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
@@ -294,51 +342,6 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], NFCController.prototype, "getWalletBalance", null);
 __decorate([
-    (0, common_1.Post)('cat/draw'),
-    (0, common_1.HttpCode)(common_1.HttpStatus.OK),
-    (0, swagger_1.ApiOperation)({
-        summary: '抽卡获得小猫NFT',
-        description: '为NFC卡片抽卡获得小猫NFT（需要初始资金）',
-    }),
-    (0, swagger_1.ApiResponse)({
-        status: 200,
-        description: '成功抽到小猫NFT',
-        type: cat_nft_dto_1.CatNFTResponseDto,
-    }),
-    (0, swagger_1.ApiResponse)({
-        status: 400,
-        description: '请求参数无效或抽卡失败',
-        schema: {
-            type: 'object',
-            properties: {
-                statusCode: {
-                    type: 'number',
-                    description: 'HTTP状态码',
-                    example: 400,
-                },
-                message: {
-                    type: 'string',
-                    description: '错误信息',
-                    example: '小猫名称已被使用',
-                },
-                error: {
-                    type: 'string',
-                    description: '错误类型',
-                    example: 'Bad Request',
-                },
-            },
-        },
-    }),
-    (0, swagger_1.ApiResponse)({
-        status: 404,
-        description: '未找到对应的NFC卡片',
-    }),
-    __param(0, (0, common_1.Body)()),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [cat_nft_dto_1.DrawCatNFTDto]),
-    __metadata("design:returntype", Promise)
-], NFCController.prototype, "drawCatNFT", null);
-__decorate([
     (0, common_1.Get)('cat/list/:uid'),
     (0, swagger_1.ApiOperation)({
         summary: '获取用户的小猫NFT列表',
@@ -364,40 +367,222 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], NFCController.prototype, "getUserCatNFTs", null);
 __decorate([
-    (0, common_1.Get)('domain/:uid'),
+    (0, common_1.Get)('cat/social/:uid'),
     (0, swagger_1.ApiOperation)({
-        summary: '获取域名NFT详情',
-        description: '根据NFC UID获取用户的域名NFT详细信息，包含图片URL和元数据',
+        summary: '获取NFC的社交统计信息',
+        description: '获取NFC的抽卡次数、已互动NFC列表和社交奖励信息',
     }),
     (0, swagger_1.ApiParam)({
         name: 'uid',
         description: 'NFC卡片UID',
-        example: '04:f3:a1:8a:b2:5d:80:abc123',
+        example: '04:1a:2b:3c:4d:5e:6f',
     }),
     (0, swagger_1.ApiResponse)({
         status: 200,
-        description: '成功获取域名NFT信息',
-        schema: {
-            type: 'object',
-            properties: {
-                domain: { type: 'string', example: 'advx-alice.inj' },
-                tokenId: { type: 'string', example: 'domain_1234567890_abc123' },
-                imageUrl: { type: 'string', example: 'https://bafybeih4nkltzoflarix3ghpjpemjyg2vcu2sywi4wku4uthhacs5uoh2a.ipfs.w3s.link/fir.png' },
-                metadata: { type: 'object' },
-                registeredAt: { type: 'string', format: 'date-time' },
-                isActive: { type: 'boolean', example: true }
-            }
-        }
+        description: '成功获取社交统计信息',
+        type: cat_nft_dto_1.SocialStatsDto,
     }),
     (0, swagger_1.ApiResponse)({
         status: 404,
-        description: '未找到NFC卡片或域名NFT',
+        description: '未找到对应的NFC卡片',
     }),
     __param(0, (0, common_1.Param)('uid')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
-], NFCController.prototype, "getDomainNFT", null);
+], NFCController.prototype, "getSocialStats", null);
+__decorate([
+    (0, common_1.Post)('cat/check-interaction'),
+    (0, swagger_1.ApiOperation)({
+        summary: '检查两个NFC是否已经互动过',
+        description: '检查两个NFC卡片是否已经进行过社交抽卡互动',
+    }),
+    (0, swagger_1.ApiBody)({
+        schema: {
+            type: 'object',
+            properties: {
+                nfc1: {
+                    type: 'string',
+                    description: '第一个NFC UID',
+                    example: '04:1a:2b:3c:4d:5e:6f',
+                },
+                nfc2: {
+                    type: 'string',
+                    description: '第二个NFC UID',
+                    example: '04:2b:3c:4d:5e:6f:7a',
+                },
+            },
+            required: ['nfc1', 'nfc2'],
+        },
+    }),
+    (0, swagger_1.ApiResponse)({
+        status: 200,
+        description: '成功检查互动状态',
+        schema: {
+            type: 'object',
+            properties: {
+                hasInteracted: {
+                    type: 'boolean',
+                    description: '是否已经互动过',
+                    example: false,
+                },
+                nfc1: {
+                    type: 'string',
+                    description: '第一个NFC UID',
+                    example: '04:1a:2b:3c:4d:5e:6f',
+                },
+                nfc2: {
+                    type: 'string',
+                    description: '第二个NFC UID',
+                    example: '04:2b:3c:4d:5e:6f:7a',
+                },
+            },
+        },
+    }),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], NFCController.prototype, "checkInteraction", null);
+__decorate([
+    (0, common_1.Post)('social-interaction'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    (0, swagger_1.ApiOperation)({
+        summary: '社交互动获取抽卡次数',
+        description: `通过NFC社交互动获取抽卡券。功能包括：
+        1. 验证两个NFC都已注册
+        2. 确保用户不与自己互动
+        3. 防止重复互动刷券
+        4. 成功互动后获得1张抽卡券
+        
+        注意：每对NFC只能互动一次`
+    }),
+    (0, swagger_1.ApiResponse)({
+        status: 200,
+        description: '社交互动成功',
+        type: cat_nft_dto_1.SocialInteractionResponseDto,
+    }),
+    (0, swagger_1.ApiResponse)({
+        status: 400,
+        description: '互动失败（重复互动、自己与自己互动等）',
+    }),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [cat_nft_dto_1.SocialInteractionDto]),
+    __metadata("design:returntype", Promise)
+], NFCController.prototype, "socialInteraction", null);
+__decorate([
+    (0, common_1.Post)('draw-cat-with-tickets'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    (0, swagger_1.ApiOperation)({
+        summary: '使用抽卡券抽取猫咪NFT',
+        description: `使用抽卡券抽取猫咪NFT。功能包括：
+        1. 消耗1张抽卡券
+        2. 基于社交奖励提升稀有度概率
+        3. 随机生成猫咪属性（颜色、稀有度）
+        4. 铸造NFT到用户钱包
+        
+        稀有度：R(65%), SR(25%), SSR(8%), UR(2%)
+        社交互动越多，稀有度概率越高`
+    }),
+    (0, swagger_1.ApiResponse)({
+        status: 200,
+        description: '抽卡成功',
+        type: cat_nft_dto_1.CatNFTResponseDto,
+    }),
+    (0, swagger_1.ApiResponse)({
+        status: 400,
+        description: '抽卡失败（无抽卡券、NFC未注册等）',
+    }),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [cat_nft_dto_1.DrawCatWithTicketsDto]),
+    __metadata("design:returntype", Promise)
+], NFCController.prototype, "drawCatWithTickets", null);
+__decorate([
+    (0, common_1.Post)('draw-cat-traditional'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    (0, swagger_1.ApiOperation)({
+        summary: '传统付费抽卡',
+        description: `付费抽取猫咪NFT。功能包括：
+        1. 直接支付抽卡费用
+        2. 标准稀有度概率（不受社交奖励影响）
+        3. 随机生成猫咪属性
+        4. 铸造NFT到用户钱包
+        
+        稀有度：R(65%), SR(25%), SSR(8%), UR(2%)`
+    }),
+    (0, swagger_1.ApiResponse)({
+        status: 200,
+        description: '抽卡成功',
+        type: cat_nft_dto_1.CatNFTResponseDto,
+    }),
+    (0, swagger_1.ApiResponse)({
+        status: 400,
+        description: '抽卡失败（支付不足、NFC未注册等）',
+    }),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [cat_nft_dto_1.DrawCatTraditionalDto]),
+    __metadata("design:returntype", Promise)
+], NFCController.prototype, "drawCatTraditional", null);
+__decorate([
+    (0, common_1.Get)('draw-stats/:nfcUID'),
+    (0, swagger_1.ApiOperation)({
+        summary: '获取NFC抽卡统计信息',
+        description: '获取指定NFC的抽卡次数统计和社交奖励信息',
+    }),
+    (0, swagger_1.ApiParam)({
+        name: 'nfcUID',
+        description: 'NFC卡片UID',
+        example: '04:1a:2b:3c:4d:5e:6f',
+    }),
+    (0, swagger_1.ApiResponse)({
+        status: 200,
+        description: '成功获取抽卡统计',
+        type: cat_nft_dto_1.DrawStatsDto,
+    }),
+    __param(0, (0, common_1.Param)('nfcUID')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], NFCController.prototype, "getDrawStats", null);
+__decorate([
+    (0, common_1.Get)('interacted-nfcs/:nfcUID'),
+    (0, swagger_1.ApiOperation)({
+        summary: '获取已互动的NFC列表',
+        description: '获取指定NFC已经互动过的其他NFC列表',
+    }),
+    (0, swagger_1.ApiParam)({
+        name: 'nfcUID',
+        description: 'NFC卡片UID',
+        example: '04:1a:2b:3c:4d:5e:6f',
+    }),
+    (0, swagger_1.ApiResponse)({
+        status: 200,
+        description: '成功获取已互动NFC列表',
+        schema: {
+            type: 'object',
+            properties: {
+                success: { type: 'boolean', example: true },
+                data: {
+                    type: 'object',
+                    properties: {
+                        interactedNFCs: {
+                            type: 'array',
+                            items: { type: 'string' },
+                            example: ['04:aa:bb:cc:dd:ee:ff', '04:11:22:33:44:55:66']
+                        }
+                    }
+                }
+            }
+        }
+    }),
+    __param(0, (0, common_1.Param)('nfcUID')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], NFCController.prototype, "getInteractedNFCs", null);
 exports.NFCController = NFCController = __decorate([
     (0, swagger_1.ApiTags)('NFC钱包管理'),
     (0, common_1.Controller)('api/nfc'),
@@ -409,9 +594,6 @@ let ContractController = class ContractController {
     }
     async getContractStatus() {
         return this.nfcService.getContractStatus();
-    }
-    async manualBindNFC(body) {
-        return this.nfcService.manualBindNFC(body.uid);
     }
 };
 exports.ContractController = ContractController;
@@ -471,42 +653,6 @@ __decorate([
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", Promise)
 ], ContractController.prototype, "getContractStatus", null);
-__decorate([
-    (0, common_1.Post)('test/manual-bind'),
-    (0, swagger_1.ApiOperation)({
-        summary: '手动绑定NFC到链上（测试用）',
-        description: '手动将已注册的NFC卡片绑定到链上，用于测试解绑功能',
-    }),
-    (0, swagger_1.ApiBody)({
-        schema: {
-            type: 'object',
-            properties: {
-                uid: {
-                    type: 'string',
-                    description: 'NFC卡片UID',
-                    example: '04:dd:ee:ff'
-                }
-            },
-            required: ['uid']
-        }
-    }),
-    (0, swagger_1.ApiResponse)({
-        status: 200,
-        description: '手动绑定成功',
-        schema: {
-            type: 'object',
-            properties: {
-                success: { type: 'boolean' },
-                message: { type: 'string' },
-                txHash: { type: 'string' }
-            }
-        }
-    }),
-    __param(0, (0, common_1.Body)()),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object]),
-    __metadata("design:returntype", Promise)
-], ContractController.prototype, "manualBindNFC", null);
 exports.ContractController = ContractController = __decorate([
     (0, swagger_1.ApiTags)('合约状态'),
     (0, common_1.Controller)('api/contract'),

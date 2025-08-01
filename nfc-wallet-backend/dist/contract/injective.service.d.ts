@@ -55,7 +55,7 @@ export declare class InjectiveService {
         rpcUrl: string;
         restUrl: string;
     };
-    mintDomainNFT(ownerAddress: string, domainName: string, nfcUID: string, tokenId: string, metadata?: any): Promise<{
+    mintDomainNFT(ownerAddress: string, domainName: string, nfcUID: string, tokenId: string): Promise<{
         success: boolean;
         txHash?: string;
         error?: string;
@@ -69,17 +69,43 @@ export declare class InjectiveService {
         rarity?: string;
         color?: string;
     }>;
+    socialInteraction(myNFC: string, otherNFC: string): Promise<{
+        success: boolean;
+        txHash?: string;
+        error?: string;
+        rewardTickets?: number;
+        totalTickets?: number;
+    }>;
+    drawCatNFTWithTickets(ownerAddress: string, nfcUID: string, catName: string): Promise<{
+        success: boolean;
+        txHash?: string;
+        error?: string;
+        rawTx?: any;
+        rarity?: string;
+        color?: string;
+        drawCount?: number;
+    }>;
+    drawCatNFTTraditional(ownerAddress: string, catName: string): Promise<{
+        success: boolean;
+        txHash?: string;
+        error?: string;
+        rawTx?: any;
+        rarity?: string;
+        color?: string;
+        drawCount?: number;
+    }>;
+    getDrawStats(nfcUID: string): Promise<{
+        availableDraws: number;
+        usedDraws: number;
+        totalDraws: number;
+        socialBonus: number;
+    }>;
+    getInteractedNFCs(nfcUID: string): Promise<string[]>;
+    hasInteracted(nfc1: string, nfc2: string): Promise<boolean>;
     getContractStatus(): Promise<{
         nfcRegistry: boolean;
         domainNFT: boolean;
         catNFT: boolean;
         networkInfo: any;
     }>;
-    unbindNFCWallet(nfcUID: string, ownerSignature: string): Promise<string>;
-    detectAndBindBlankCard(nfcUID: string, walletAddress: string): Promise<{
-        success: boolean;
-        txHash?: string;
-        error?: string;
-    }>;
-    emergencyUnbindNFCWallet(nfcUID: string): Promise<string>;
 }

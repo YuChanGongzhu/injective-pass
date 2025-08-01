@@ -8,8 +8,8 @@ export declare class ContractService {
     private nfcCardNFTContract;
     constructor(configService: ConfigService);
     private initializeContracts;
-    isDomainAvailable(domainSuffix: string): Promise<boolean>;
-    registerDomain(domainSuffix: string, nfcUID: string, metadataURI?: string): Promise<string | null>;
+    isDomainAvailable(domainPrefix: string): Promise<boolean>;
+    registerDomain(domainPrefix: string, userAddress: string): Promise<string | null>;
     resolveDomain(domain: string): Promise<string | null>;
     reverseResolve(address: string): Promise<string | null>;
     getUserDomains(userAddress: string): Promise<string[]>;
@@ -30,6 +30,7 @@ export declare class ContractService {
     mintCardNFT(nfcUID: string, seriesId: string, ownerAddress: string): Promise<number | null>;
     unbindAndBurnCardNFT(nfcUID: string, ownerSignature?: string): Promise<boolean>;
     getCardNFTInfo(nfcUID: string): Promise<any | null>;
+    interactWithCard(myNfcUID: string, targetNfcUID: string, interactionType: 'battle' | 'social' | 'trade', userAddress: string): Promise<boolean>;
     unbindAndTransferCardNFT(nfcUID: string, newOwner: string, ownerSignature: string): Promise<boolean>;
     getWalletCardStats(walletAddress: string): Promise<{
         totalCards: number;
@@ -52,6 +53,11 @@ export declare class ContractService {
     }>;
     mintCatCardNFT(nfcUID: string, ownerAddress: string): Promise<number | null>;
     getWalletCats(walletAddress: string): Promise<any[]>;
+    interactWithCats(myNfcUID: string, targetNfcUID: string, interactionType: number, message: string, userAddress: string): Promise<{
+        success: boolean;
+        transactionData?: any;
+    }>;
+    getCatInteractionHistory(nfcUID: string): Promise<any[]>;
     isAuthorizedMinter(address: string): Promise<boolean>;
     setAuthorizedMinter(minterAddress: string, authorized: boolean): Promise<boolean>;
     getContractStatus(): Promise<{

@@ -22,12 +22,11 @@ import {
 import { NFCService } from './nfc.service';
 import { RegisterNFCDto } from './dto/register-nfc.dto';
 import { UnbindNFCDto } from './dto/unbind-nfc.dto';
-import { UnbindResponseDto } from './dto/unbind-response.dto';
 import { WalletResponseDto } from './dto/wallet-response.dto';
 import { NFCStatusResponseDto } from './dto/nfc-status-response.dto';
 import { CardOwnershipResponseDto } from './dto/card-ownership-response.dto';
 import { RegisterDomainDto, DomainNFTResponseDto } from './dto/domain-nft.dto';
-import { DrawCatNFTDto, CatNFTResponseDto, CatNFTListDto } from './dto/cat-nft.dto';
+import { DrawCatNFTDto, CatNFTResponseDto, CatNFTListDto, SocialStatsDto, SocialInteractionDto, SocialInteractionResponseDto, DrawCatWithTicketsDto, DrawCatTraditionalDto, DrawStatsDto } from './dto/cat-nft.dto';
 
 @ApiTags('NFC钱包管理')
 @Controller('api/nfc')
@@ -38,7 +37,13 @@ export class NFCController {
     @HttpCode(HttpStatus.OK)
     @ApiOperation({
         summary: '注册NFC卡片',
-        description: '通过NFC UID注册并生成以太坊钱包，如果已存在则返回现有钱包信息。新建钱包将自动发送初始资金和铸造NFT',
+        description: `通过NFC UID注册并生成Injective钱包。功能包括：
+        1. 生成新的Injective钱包地址
+        2. 自动发送0.1 INJ初始资金
+        3. 在链上绑定NFC与钱包的关系
+        4. 如果NFC已注册则返回现有钱包信息
+        
+        注意：NFC UID格式支持十六进制字符串，可使用冒号分隔`
     })
     @ApiResponse({
         status: 200,
@@ -121,7 +126,14 @@ export class NFCController {
     @HttpCode(HttpStatus.OK)
     @ApiOperation({
         summary: '注册域名NFT',
-        description: '为NFC卡片注册域名NFT（需要初始资金）',
+        description: `为NFC卡片注册.inj域名NFT。要求：
+        1. NFC必须已注册并绑定钱包
+        2. 域名格式：3-20字符，只能包含字母、数字和连字符
+        3. 不能以连字符开始或结束
+        4. 域名全局唯一，不区分大小写
+        5. 免费注册（测试网络）
+        
+        成功后将在链上铸造域名NFT并绑定到NFC钱包`
     })
     @ApiResponse({
         status: 200,
@@ -142,7 +154,7 @@ export class NFCController {
                 message: {
                     type: 'string',
                     description: '错误信息',
-                    example: '域名已被占用',
+                    example: '域名已被占用或格式无效',
                 },
                 error: {
                     type: 'string',
@@ -160,22 +172,38 @@ export class NFCController {
     @HttpCode(HttpStatus.OK)
     @ApiOperation({
         summary: '解绑NFC卡片',
-        description: '解绑NFC卡片，删除钱包记录并进行链上解绑操作',
+        description: '解绑NFC卡片，删除钱包记录并销毁NFT',
     })
     @ApiResponse({
         status: 200,
         description: '成功解绑',
-        type: UnbindResponseDto,
+        schema: {
+            type: 'object',
+            properties: {
+                success: {
+                    type: 'boolean',
+                    description: '是否成功',
+                    example: true,
+                },
+                nfcUnbound: {
+                    type: 'boolean',
+                    description: 'NFC是否已解绑',
+                    example: true,
+                },
+                nftBurned: {
+                    type: 'boolean',
+                    description: 'NFT是否已销毁',
+                    example: true,
+                },
+                message: {
+                    type: 'string',
+                    description: '操作结果消息',
+                    example: '解绑成功',
+                },
+            },
+        },
     })
-    @ApiResponse({
-        status: 400,
-        description: '请求参数错误',
-    })
-    @ApiResponse({
-        status: 404,
-        description: 'NFC卡片不存在',
-    })
-    async unbindNFC(@Body() unbindNFCDto: UnbindNFCDto): Promise<UnbindResponseDto> {
+    async unbindNFC(@Body() unbindNFCDto: UnbindNFCDto) {
         return this.nfcService.unbindNFC(unbindNFCDto.uid);
     }
 
@@ -258,49 +286,6 @@ export class NFCController {
         return this.nfcService.getWalletBalance(address);
     }
 
-    @Post('cat/draw')
-    @HttpCode(HttpStatus.OK)
-    @ApiOperation({
-        summary: '抽卡获得小猫NFT',
-        description: '为NFC卡片抽卡获得小猫NFT（需要初始资金）',
-    })
-    @ApiResponse({
-        status: 200,
-        description: '成功抽到小猫NFT',
-        type: CatNFTResponseDto,
-    })
-    @ApiResponse({
-        status: 400,
-        description: '请求参数无效或抽卡失败',
-        schema: {
-            type: 'object',
-            properties: {
-                statusCode: {
-                    type: 'number',
-                    description: 'HTTP状态码',
-                    example: 400,
-                },
-                message: {
-                    type: 'string',
-                    description: '错误信息',
-                    example: '小猫名称已被使用',
-                },
-                error: {
-                    type: 'string',
-                    description: '错误类型',
-                    example: 'Bad Request',
-                },
-            },
-        },
-    })
-    @ApiResponse({
-        status: 404,
-        description: '未找到对应的NFC卡片',
-    })
-    async drawCatNFT(@Body() drawCatNFTDto: DrawCatNFTDto): Promise<CatNFTResponseDto> {
-        return this.nfcService.drawCatNFT(drawCatNFTDto);
-    }
-
     @Get('cat/list/:uid')
     @ApiOperation({
         summary: '获取用户的小猫NFT列表',
@@ -324,42 +309,213 @@ export class NFCController {
         return this.nfcService.getUserCatNFTs(uid);
     }
 
-    @Get('domain/:uid')
+    @Get('cat/social/:uid')
     @ApiOperation({
-        summary: '获取域名NFT详情',
-        description: '根据NFC UID获取用户的域名NFT详细信息，包含图片URL和元数据',
+        summary: '获取NFC的社交统计信息',
+        description: '获取NFC的抽卡次数、已互动NFC列表和社交奖励信息',
     })
     @ApiParam({
         name: 'uid',
         description: 'NFC卡片UID',
-        example: '04:f3:a1:8a:b2:5d:80:abc123',
+        example: '04:1a:2b:3c:4d:5e:6f',
     })
     @ApiResponse({
         status: 200,
-        description: '成功获取域名NFT信息',
-        schema: {
-            type: 'object',
-            properties: {
-                domain: { type: 'string', example: 'advx-alice.inj' },
-                tokenId: { type: 'string', example: 'domain_1234567890_abc123' },
-                imageUrl: { type: 'string', example: 'https://bafybeih4nkltzoflarix3ghpjpemjyg2vcu2sywi4wku4uthhacs5uoh2a.ipfs.w3s.link/fir.png' },
-                metadata: { type: 'object' },
-                registeredAt: { type: 'string', format: 'date-time' },
-                isActive: { type: 'boolean', example: true }
-            }
-        }
+        description: '成功获取社交统计信息',
+        type: SocialStatsDto,
     })
     @ApiResponse({
         status: 404,
-        description: '未找到NFC卡片或域名NFT',
+        description: '未找到对应的NFC卡片',
     })
-    async getDomainNFT(@Param('uid') uid: string) {
-        return this.nfcService.getUserDomainNFT(uid);
+    async getSocialStats(@Param('uid') uid: string): Promise<SocialStatsDto> {
+        return this.nfcService.getSocialStats(uid);
     }
 
+    @Post('cat/check-interaction')
+    @ApiOperation({
+        summary: '检查两个NFC是否已经互动过',
+        description: '检查两个NFC卡片是否已经进行过社交抽卡互动',
+    })
+    @ApiBody({
+        schema: {
+            type: 'object',
+            properties: {
+                nfc1: {
+                    type: 'string',
+                    description: '第一个NFC UID',
+                    example: '04:1a:2b:3c:4d:5e:6f',
+                },
+                nfc2: {
+                    type: 'string',
+                    description: '第二个NFC UID',
+                    example: '04:2b:3c:4d:5e:6f:7a',
+                },
+            },
+            required: ['nfc1', 'nfc2'],
+        },
+    })
+    @ApiResponse({
+        status: 200,
+        description: '成功检查互动状态',
+        schema: {
+            type: 'object',
+            properties: {
+                hasInteracted: {
+                    type: 'boolean',
+                    description: '是否已经互动过',
+                    example: false,
+                },
+                nfc1: {
+                    type: 'string',
+                    description: '第一个NFC UID',
+                    example: '04:1a:2b:3c:4d:5e:6f',
+                },
+                nfc2: {
+                    type: 'string',
+                    description: '第二个NFC UID',
+                    example: '04:2b:3c:4d:5e:6f:7a',
+                },
+            },
+        },
+    })
+    async checkInteraction(@Body() body: { nfc1: string; nfc2: string }) {
+        const hasInteracted = await this.nfcService.checkInteraction(body.nfc1, body.nfc2);
+        return {
+            hasInteracted,
+            nfc1: body.nfc1,
+            nfc2: body.nfc2
+        };
+    }
 
+    @Post('social-interaction')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({
+        summary: '社交互动获取抽卡次数',
+        description: `通过NFC社交互动获取抽卡券。功能包括：
+        1. 验证两个NFC都已注册
+        2. 确保用户不与自己互动
+        3. 防止重复互动刷券
+        4. 成功互动后获得1张抽卡券
+        
+        注意：每对NFC只能互动一次`
+    })
+    @ApiResponse({
+        status: 200,
+        description: '社交互动成功',
+        type: SocialInteractionResponseDto,
+    })
+    @ApiResponse({
+        status: 400,
+        description: '互动失败（重复互动、自己与自己互动等）',
+    })
+    async socialInteraction(@Body() socialInteractionDto: SocialInteractionDto): Promise<SocialInteractionResponseDto> {
+        return this.nfcService.socialInteraction(socialInteractionDto);
+    }
 
+    @Post('draw-cat-with-tickets')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({
+        summary: '使用抽卡券抽取猫咪NFT',
+        description: `使用抽卡券抽取猫咪NFT。功能包括：
+        1. 消耗1张抽卡券
+        2. 基于社交奖励提升稀有度概率
+        3. 随机生成猫咪属性（颜色、稀有度）
+        4. 铸造NFT到用户钱包
+        
+        稀有度：R(65%), SR(25%), SSR(8%), UR(2%)
+        社交互动越多，稀有度概率越高`
+    })
+    @ApiResponse({
+        status: 200,
+        description: '抽卡成功',
+        type: CatNFTResponseDto,
+    })
+    @ApiResponse({
+        status: 400,
+        description: '抽卡失败（无抽卡券、NFC未注册等）',
+    })
+    async drawCatWithTickets(@Body() drawCatWithTicketsDto: DrawCatWithTicketsDto): Promise<CatNFTResponseDto> {
+        return this.nfcService.drawCatWithTickets(drawCatWithTicketsDto);
+    }
 
+    @Post('draw-cat-traditional')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({
+        summary: '传统付费抽卡',
+        description: `付费抽取猫咪NFT。功能包括：
+        1. 直接支付抽卡费用
+        2. 标准稀有度概率（不受社交奖励影响）
+        3. 随机生成猫咪属性
+        4. 铸造NFT到用户钱包
+        
+        稀有度：R(65%), SR(25%), SSR(8%), UR(2%)`
+    })
+    @ApiResponse({
+        status: 200,
+        description: '抽卡成功',
+        type: CatNFTResponseDto,
+    })
+    @ApiResponse({
+        status: 400,
+        description: '抽卡失败（支付不足、NFC未注册等）',
+    })
+    async drawCatTraditional(@Body() drawCatTraditionalDto: DrawCatTraditionalDto): Promise<CatNFTResponseDto> {
+        return this.nfcService.drawCatTraditional(drawCatTraditionalDto);
+    }
+
+    @Get('draw-stats/:nfcUID')
+    @ApiOperation({
+        summary: '获取NFC抽卡统计信息',
+        description: '获取指定NFC的抽卡次数统计和社交奖励信息',
+    })
+    @ApiParam({
+        name: 'nfcUID',
+        description: 'NFC卡片UID',
+        example: '04:1a:2b:3c:4d:5e:6f',
+    })
+    @ApiResponse({
+        status: 200,
+        description: '成功获取抽卡统计',
+        type: DrawStatsDto,
+    })
+    async getDrawStats(@Param('nfcUID') nfcUID: string): Promise<DrawStatsDto> {
+        return this.nfcService.getDrawStats(nfcUID);
+    }
+
+    @Get('interacted-nfcs/:nfcUID')
+    @ApiOperation({
+        summary: '获取已互动的NFC列表',
+        description: '获取指定NFC已经互动过的其他NFC列表',
+    })
+    @ApiParam({
+        name: 'nfcUID',
+        description: 'NFC卡片UID',
+        example: '04:1a:2b:3c:4d:5e:6f',
+    })
+    @ApiResponse({
+        status: 200,
+        description: '成功获取已互动NFC列表',
+        schema: {
+            type: 'object',
+            properties: {
+                success: { type: 'boolean', example: true },
+                data: {
+                    type: 'object',
+                    properties: {
+                        interactedNFCs: {
+                            type: 'array',
+                            items: { type: 'string' },
+                            example: ['04:aa:bb:cc:dd:ee:ff', '04:11:22:33:44:55:66']
+                        }
+                    }
+                }
+            }
+        }
+    })
+    async getInteractedNFCs(@Param('nfcUID') nfcUID: string): Promise<{ interactedNFCs: string[] }> {
+        return this.nfcService.getInteractedNFCs(nfcUID);
+    }
 }
 
 // Add Contract Controller for contract status endpoint
@@ -421,39 +577,5 @@ export class ContractController {
     })
     async getContractStatus() {
         return this.nfcService.getContractStatus();
-    }
-
-    @Post('test/manual-bind')
-    @ApiOperation({
-        summary: '手动绑定NFC到链上（测试用）',
-        description: '手动将已注册的NFC卡片绑定到链上，用于测试解绑功能',
-    })
-    @ApiBody({
-        schema: {
-            type: 'object',
-            properties: {
-                uid: {
-                    type: 'string',
-                    description: 'NFC卡片UID',
-                    example: '04:dd:ee:ff'
-                }
-            },
-            required: ['uid']
-        }
-    })
-    @ApiResponse({
-        status: 200,
-        description: '手动绑定成功',
-        schema: {
-            type: 'object',
-            properties: {
-                success: { type: 'boolean' },
-                message: { type: 'string' },
-                txHash: { type: 'string' }
-            }
-        }
-    })
-    async manualBindNFC(@Body() body: { uid: string }): Promise<{ success: boolean; message: string; txHash?: string; error?: string }> {
-        return this.nfcService.manualBindNFC(body.uid);
     }
 }

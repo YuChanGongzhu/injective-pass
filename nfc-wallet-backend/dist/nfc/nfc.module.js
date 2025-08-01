@@ -23,7 +23,7 @@ exports.NFCModule = NFCModule = __decorate([
             contract_module_1.ContractModule,
             prisma_module_1.PrismaModule,
         ],
-        controllers: [nfc_controller_1.NFCController, nfc_controller_1.ContractController],
+        controllers: [nfc_controller_1.NFCController],
         providers: [nfc_service_1.NFCService],
         exports: [nfc_service_1.NFCService],
     })

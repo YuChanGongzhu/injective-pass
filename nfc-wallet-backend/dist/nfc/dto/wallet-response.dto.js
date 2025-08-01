@@ -125,14 +125,6 @@ __decorate([
 ], WalletResponseDto.prototype, "domainTokenId", void 0);
 __decorate([
     (0, swagger_1.ApiProperty)({
-        description: '域名NFT图片URL',
-        example: 'https://bafybeih4nkltzoflarix3ghpjpemjyg2vcu2sywi4wku4uthhacs5uoh2a.ipfs.w3s.link/fir.png',
-        required: false,
-    }),
-    __metadata("design:type", String)
-], WalletResponseDto.prototype, "domainImageUrl", void 0);
-__decorate([
-    (0, swagger_1.ApiProperty)({
         description: '是否已获得初始资金',
         example: false,
     }),
@@ -167,14 +159,6 @@ __decorate([
     }),
     __metadata("design:type", Boolean)
 ], WalletResponseDto.prototype, "isNewWallet", void 0);
-__decorate([
-    (0, swagger_1.ApiProperty)({
-        description: '初始资金交易哈希（如果有）',
-        example: '0x1234567890abcdef...',
-        required: false,
-    }),
-    __metadata("design:type", String)
-], WalletResponseDto.prototype, "initialFundTxHash", void 0);
 class TransactionResponseDto {
 }
 exports.TransactionResponseDto = TransactionResponseDto;

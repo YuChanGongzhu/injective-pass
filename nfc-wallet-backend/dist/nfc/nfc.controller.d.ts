@@ -1,10 +1,9 @@
 import { NFCService } from './nfc.service';
 import { RegisterNFCDto } from './dto/register-nfc.dto';
 import { UnbindNFCDto } from './dto/unbind-nfc.dto';
-import { UnbindResponseDto } from './dto/unbind-response.dto';
 import { WalletResponseDto } from './dto/wallet-response.dto';
 import { RegisterDomainDto, DomainNFTResponseDto } from './dto/domain-nft.dto';
-import { DrawCatNFTDto, CatNFTResponseDto, CatNFTListDto } from './dto/cat-nft.dto';
+import { CatNFTResponseDto, CatNFTListDto, SocialStatsDto, SocialInteractionDto, SocialInteractionResponseDto, DrawCatWithTicketsDto, DrawCatTraditionalDto, DrawStatsDto } from './dto/cat-nft.dto';
 export declare class NFCController {
     private readonly nfcService;
     constructor(nfcService: NFCService);
@@ -12,7 +11,10 @@ export declare class NFCController {
     getWalletByUID(uid: string): Promise<WalletResponseDto>;
     checkDomainAvailability(domain: string): Promise<import("./dto/domain-nft.dto").DomainAvailabilityDto>;
     registerDomainNFT(registerDomainDto: RegisterDomainDto): Promise<DomainNFTResponseDto>;
-    unbindNFC(unbindNFCDto: UnbindNFCDto): Promise<UnbindResponseDto>;
+    unbindNFC(unbindNFCDto: UnbindNFCDto): Promise<{
+        success: boolean;
+        message: string;
+    }>;
     getWalletStats(): Promise<{
         totalWallets: number;
         walletsWithDomain: number;
@@ -24,15 +26,22 @@ export declare class NFCController {
         inj: string;
         usd?: string;
     }>;
-    drawCatNFT(drawCatNFTDto: DrawCatNFTDto): Promise<CatNFTResponseDto>;
     getUserCatNFTs(uid: string): Promise<CatNFTListDto>;
-    getDomainNFT(uid: string): Promise<{
-        domain: string;
-        tokenId: string;
-        imageUrl: string;
-        metadata: any;
-        registeredAt: Date;
-        isActive: boolean;
+    getSocialStats(uid: string): Promise<SocialStatsDto>;
+    checkInteraction(body: {
+        nfc1: string;
+        nfc2: string;
+    }): Promise<{
+        hasInteracted: boolean;
+        nfc1: string;
+        nfc2: string;
+    }>;
+    socialInteraction(socialInteractionDto: SocialInteractionDto): Promise<SocialInteractionResponseDto>;
+    drawCatWithTickets(drawCatWithTicketsDto: DrawCatWithTicketsDto): Promise<CatNFTResponseDto>;
+    drawCatTraditional(drawCatTraditionalDto: DrawCatTraditionalDto): Promise<CatNFTResponseDto>;
+    getDrawStats(nfcUID: string): Promise<DrawStatsDto>;
+    getInteractedNFCs(nfcUID: string): Promise<{
+        interactedNFCs: string[];
     }>;
 }
 export declare class ContractController {
@@ -43,13 +52,5 @@ export declare class ContractController {
         domainNFT: boolean;
         catNFT: boolean;
         networkInfo: any;
-    }>;
-    manualBindNFC(body: {
-        uid: string;
-    }): Promise<{
-        success: boolean;
-        message: string;
-        txHash?: string;
-        error?: string;
     }>;
 }
