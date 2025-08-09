@@ -13,14 +13,21 @@ export declare class NFCService {
     private transactionService;
     private readonly logger;
     constructor(prisma: PrismaService, cryptoService: CryptoService, injectiveService: InjectiveService, transactionService: TransactionService);
+    private decryptUserPrivateKey;
+    private bindNFCToContract;
     registerNFC(registerNFCDto: RegisterNFCDto): Promise<WalletResponseDto>;
     getWalletByUID(uid: string): Promise<WalletResponseDto | null>;
     bindNFCCard(bindNFCDto: BindNFCDto): Promise<{
         success: boolean;
         message: string;
     }>;
+    manualBindNFCToContract(uid: string): Promise<{
+        success: boolean;
+        message: string;
+        transactionHash?: string;
+    }>;
     registerDomainNFT(registerDomainDto: RegisterDomainDto): Promise<DomainNFTResponseDto>;
-    checkDomainAvailability(domainPrefix: string): Promise<DomainAvailabilityDto>;
+    checkDomainAvailability(domainSuffix: string): Promise<DomainAvailabilityDto>;
     getWalletBalance(address: string): Promise<{
         inj: string;
         usd?: string;
@@ -46,6 +53,7 @@ export declare class NFCService {
     }>;
     private validateUID;
     private validateDomain;
+    private validateDomainSuffix;
     private validateDomainPrefix;
     socialInteraction(socialInteractionDto: SocialInteractionDto): Promise<SocialInteractionResponseDto>;
     drawCatWithTickets(drawCatWithTicketsDto: DrawCatWithTicketsDto): Promise<CatNFTResponseDto>;

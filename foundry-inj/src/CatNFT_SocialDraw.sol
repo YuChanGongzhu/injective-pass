@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.30;
+pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
@@ -146,8 +146,12 @@ contract CatNFT is ERC721, ERC721URIStorage, Ownable, ReentrancyGuard {
         require(nfcRegistry.isNFCBound(otherNFC), "Other NFC not registered");
 
         // 验证调用者拥有myNFC
-        (address myWallet, , , , , ) = nfcRegistry.getNFCBinding(myNFC);
-        require(msg.sender == myWallet, "You don't own this NFC");
+        INFCWalletRegistry.NFCBinding memory myBinding = nfcRegistry
+            .getNFCBinding(myNFC);
+        require(
+            msg.sender == myBinding.walletAddress,
+            "You don't own this NFC"
+        );
 
         // 检查是否已经互动过（防止刷抽卡次数）
         require(
@@ -188,7 +192,7 @@ contract CatNFT is ERC721, ERC721URIStorage, Ownable, ReentrancyGuard {
     function drawCatNFTWithTickets(
         string memory nfcUID,
         string memory catName
-    ) external payable nonReentrant onlyAuthorizedOperator {
+    ) external payable nonReentrant {
         require(msg.value >= drawFee, "Insufficient draw fee");
         require(bytes(catName).length > 0, "Cat name cannot be empty");
         require(bytes(nfcUID).length > 0, "Invalid NFC UID");
@@ -198,10 +202,11 @@ contract CatNFT is ERC721, ERC721URIStorage, Ownable, ReentrancyGuard {
         require(nfcRegistry.isNFCBound(nfcUID), "NFC not registered");
 
         // 获取NFC对应的钱包地址并验证调用者拥有该NFC
-        (address userWallet, , , , , ) = nfcRegistry.getNFCBinding(nfcUID);
-        require(msg.sender == userWallet, "You don't own this NFC");
+        INFCWalletRegistry.NFCBinding memory binding = nfcRegistry
+            .getNFCBinding(nfcUID);
+        require(msg.sender == binding.walletAddress, "You don't own this NFC");
         require(
-            userCats[userWallet].length < MAX_CATS_PER_USER,
+            userCats[binding.walletAddress].length < MAX_CATS_PER_USER,
             "Too many cats"
         );
 
@@ -240,23 +245,23 @@ contract CatNFT is ERC721, ERC721URIStorage, Ownable, ReentrancyGuard {
             emit RainbowCatFound(
                 newTokenId,
                 catName,
-                userWallet,
+                binding.walletAddress,
                 block.timestamp
             );
         }
 
         // 添加到用户的小猫列表
-        userCats[userWallet].push(newTokenId);
+        userCats[binding.walletAddress].push(newTokenId);
 
         // 铸造NFT到用户钱包
-        _safeMint(userWallet, newTokenId);
+        _safeMint(binding.walletAddress, newTokenId);
 
         emit CatDrawnWithTickets(
             newTokenId,
             catName,
             rarity,
             color,
-            userWallet,
+            binding.walletAddress,
             nfcUID,
             drawCounts[nfcUID]
         );
@@ -266,7 +271,7 @@ contract CatNFT is ERC721, ERC721URIStorage, Ownable, ReentrancyGuard {
             catName,
             rarity,
             color,
-            userWallet,
+            binding.walletAddress,
             block.timestamp
         );
     }
@@ -616,16 +621,19 @@ contract CatNFT is ERC721, ERC721URIStorage, Ownable, ReentrancyGuard {
         string memory nfcUID,
         address userWallet
     ) external {
-        require(msg.sender == address(nfcRegistry), "Only NFC registry can call");
+        require(
+            msg.sender == address(nfcRegistry),
+            "Only NFC registry can call"
+        );
         require(userWallet != address(0), "Invalid wallet address");
         require(bytes(nfcUID).length > 0, "Invalid NFC UID");
-        
+
         // 验证NFC确实已绑定
         require(nfcRegistry.isNFCBound(nfcUID), "NFC not bound");
-        
+
         // 自动授权用户为操作者
         authorizedOperators[userWallet] = true;
-        
+
         emit OperatorAuthorized(userWallet, true);
     }
 

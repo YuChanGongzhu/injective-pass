@@ -21,11 +21,14 @@ export const CONTRACT_CONSTANTS = {
         SOCIAL_BONUS_RATE: 1, // 1%增加
     },
 
-    // 域名NFT合约常量
+    // 域名NFT合约常量 - 与合约完全一致
     DOMAIN_NFT: {
-        MIN_DOMAIN_LENGTH: 3,
-        MAX_DOMAIN_LENGTH: 20,
-        DOMAIN_REGEX: /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$/,
+        MIN_DOMAIN_LENGTH: 1,     // 合约 MIN_DOMAIN_LENGTH
+        MAX_DOMAIN_LENGTH: 25,    // 合约 MAX_DOMAIN_LENGTH(30) - advx-(5) = 25
+        DOMAIN_PREFIX: 'advx-',   // 合约自动添加的前缀
+        DOMAIN_SUFFIX: '.inj',    // 合约自动添加的后缀
+        // 合约规则：只允许小写字母、数字、连字符，不能以连字符开头/结尾，不能连续连字符
+        DOMAIN_REGEX: /^[a-z0-9]+([a-z0-9-]*[a-z0-9])?$/,
         REGISTRATION_FEE: '0', // 免费注册 (测试网)
     },
 
@@ -66,37 +69,55 @@ export class ContractValidator {
     }
 
     /**
-     * 验证域名前缀
+     * 验证域名后缀 (与合约_isValidDomainSuffix逻辑完全一致)
      */
-    static validateDomainPrefix(domainPrefix: string): { valid: boolean; error?: string } {
+    static validateDomainSuffix(domainSuffix: string): { valid: boolean; error?: string } {
         const { MIN_DOMAIN_LENGTH, MAX_DOMAIN_LENGTH, DOMAIN_REGEX } = CONTRACT_CONSTANTS.DOMAIN_NFT;
 
-        if (!domainPrefix) {
-            return { valid: false, error: '域名前缀不能为空' };
+        if (!domainSuffix) {
+            return { valid: false, error: '域名后缀不能为空' };
         }
 
-        if (domainPrefix.length < MIN_DOMAIN_LENGTH) {
+        // 合约验证：length < MIN_DOMAIN_LENGTH || length > MAX_DOMAIN_LENGTH - 5
+        if (domainSuffix.length < MIN_DOMAIN_LENGTH) {
             return {
                 valid: false,
-                error: `域名长度不能少于${MIN_DOMAIN_LENGTH}字符`
+                error: `域名后缀长度不能少于${MIN_DOMAIN_LENGTH}字符`
             };
         }
 
-        if (domainPrefix.length > MAX_DOMAIN_LENGTH) {
+        if (domainSuffix.length > MAX_DOMAIN_LENGTH) {
             return {
                 valid: false,
-                error: `域名长度不能超过${MAX_DOMAIN_LENGTH}字符`
+                error: `域名后缀长度不能超过${MAX_DOMAIN_LENGTH}字符 (总长度限制30字符，advx-前缀占5字符)`
             };
         }
 
-        if (!DOMAIN_REGEX.test(domainPrefix)) {
+        // 合约验证：只允许小写字母、数字、连字符，不能以连字符开头/结尾，不能连续连字符
+        if (!DOMAIN_REGEX.test(domainSuffix)) {
             return {
                 valid: false,
-                error: '域名格式无效：只能包含字母、数字和连字符，不能以连字符开始或结束'
+                error: '域名格式无效：只能包含小写字母、数字和连字符，不能以连字符开始或结束，不能有连续连字符'
+            };
+        }
+
+        // 检查连续连字符 (合约中的额外检查)
+        if (domainSuffix.includes('--')) {
+            return {
+                valid: false,
+                error: '域名不能包含连续的连字符'
             };
         }
 
         return { valid: true };
+    }
+
+    /**
+     * 生成完整域名 (与合约mintDomainNFT逻辑一致)
+     */
+    static generateFullDomain(domainSuffix: string): string {
+        const { DOMAIN_PREFIX, DOMAIN_SUFFIX } = CONTRACT_CONSTANTS.DOMAIN_NFT;
+        return `${DOMAIN_PREFIX}${domainSuffix}${DOMAIN_SUFFIX}`;
     }
 
     /**

@@ -5,7 +5,7 @@
   "main": "dist/main.js",
   "scripts": {
     "prebuild": "rimraf dist",
-    "build": "nest build && mkdir -p dist/contract/abis && cp src/contract/abis/*.json dist/contract/abis/",
+    "build": "nest build && node copy-abis.js",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",

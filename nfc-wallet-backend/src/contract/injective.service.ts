@@ -36,7 +36,7 @@ function loadABI(filename: string): any[] {
 // 合约 ABI 常量
 const NFCWalletRegistryABI = loadABI('NFCWalletRegistry.json');
 const INJDomainNFTABI = loadABI('INJDomainNFT.json');
-const CatNFTABI = loadABI('CatNFT.json');
+const CatNFTABI = loadABI('CatNFT_SocialDraw.json');
 
 @Injectable()
 export class InjectiveService {
@@ -187,7 +187,7 @@ export class InjectiveService {
             }
 
             const binding = await this.nfcRegistryContract.getNFCBinding(nfcUID);
-            
+
             return {
                 walletAddress: binding[0],
                 boundAt: Number(binding[1]),
@@ -380,6 +380,9 @@ export class InjectiveService {
                 };
             }
 
+            // 规范化接收地址：支持 inj 或 0x，银行模块要求 inj(bech32)
+            const normalizedDst = toAddress.startsWith('inj') ? toAddress : getInjectiveAddress(toAddress);
+
             // 创建MsgSend消息
             const msg = MsgSend.fromJSON({
                 amount: {
@@ -387,7 +390,7 @@ export class InjectiveService {
                     amount: new BigNumberInBase(amount).toWei().toFixed()
                 },
                 srcInjectiveAddress: masterAddress,
-                dstInjectiveAddress: toAddress
+                dstInjectiveAddress: normalizedDst
             });
 
             // 使用MsgBroadcasterWithPk发送交易
@@ -408,7 +411,7 @@ export class InjectiveService {
                     rawTx: {
                         type: 'SEND',
                         from: masterAddress,
-                        to: toAddress,
+                        to: normalizedDst,
                         amount: amount,
                         denom: 'inj',
                         txHash: txResponse.txHash,
@@ -583,11 +586,15 @@ export class InjectiveService {
                 throw new Error('域名NFT合约未初始化');
             }
 
-            // 提取域名前缀（移除.inj后缀）
-            const domainPrefix = domainName.replace('.inj', '');
+            // 提取域名后缀（移除advx-前缀和.inj后缀）
+            // 合约期望的是domainSuffix，会自动添加advx-前缀
+            let domainSuffix = domainName.replace('.inj', ''); // 移除.inj
+            if (domainSuffix.startsWith('advx-')) {
+                domainSuffix = domainSuffix.replace('advx-', ''); // 移除advx-前缀
+            }
 
             // 调用合约的mintDomainNFT方法
-            console.log(`开始铸造域名NFT: ${domainName} -> ${ownerAddress}, NFC: ${nfcUID}`);
+            console.log(`开始铸造域名NFT: ${domainName} -> ${ownerAddress}, NFC: ${nfcUID}, 域名后缀: ${domainSuffix}`);
 
             // 使用用户私钥创建合约实例
             const userWallet = new Wallet(userPrivateKey, this.evmProvider);
@@ -598,7 +605,7 @@ export class InjectiveService {
             );
 
             const tx = await userDomainNFTContract.mintDomainNFT(
-                domainPrefix,
+                domainSuffix,  // 传递纯后缀，合约会自动添加advx-前缀
                 nfcUID,
                 '', // metadataURI 可以为空
                 {
@@ -794,6 +801,68 @@ export class InjectiveService {
             }
         } catch (error) {
             console.error('社交互动失败:', error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+
+    /**
+     * 检查用户在CatNFT合约中的授权状态
+     */
+    async checkUserAuthorization(userAddress: string): Promise<boolean> {
+        try {
+            if (!this.catNFTContract) {
+                return false;
+            }
+
+            const isAuthorized = await this.catNFTContract.authorizedOperators(userAddress);
+            console.log(`用户 ${userAddress} 授权状态: ${isAuthorized}`);
+            return isAuthorized;
+        } catch (error) {
+            console.error('检查用户授权状态失败:', error);
+            return false;
+        }
+    }
+
+    /**
+     * 手动授权用户为CatNFT合约操作者
+     */
+    async authorizeUser(userAddress: string): Promise<{ success: boolean; txHash?: string; error?: string }> {
+        try {
+            if (!this.catNFTContract) {
+                throw new Error('CatNFT合约未初始化');
+            }
+
+            console.log(`开始手动授权用户: ${userAddress}`);
+
+            // 使用合约拥有者身份进行授权
+            const tx = await this.catNFTContract.setAuthorizedOperator(
+                userAddress,
+                true,
+                {
+                    gasLimit: 100000,
+                    gasPrice: parseEther('0.00000002') // 20 gwei
+                }
+            );
+
+            console.log(`用户授权交易已发送，交易哈希: ${tx.hash}`);
+
+            // 等待交易确认
+            const receipt = await tx.wait();
+
+            if (receipt.status === 1) {
+                console.log(`用户授权成功: ${userAddress}, 交易哈希: ${tx.hash}`);
+                return {
+                    success: true,
+                    txHash: tx.hash
+                };
+            } else {
+                throw new Error('授权交易失败');
+            }
+        } catch (error) {
+            console.error('用户授权失败:', error);
             return {
                 success: false,
                 error: error.message

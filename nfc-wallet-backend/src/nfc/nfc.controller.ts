@@ -89,14 +89,56 @@ export class NFCController {
         return wallet;
     }
 
+    @Post('bind-to-contract/:uid')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({
+        summary: '手动绑定NFC到合约',
+        description: '手动将已注册的NFC绑定到NFCWalletRegistry合约。用于修复绑定失败的情况。',
+    })
+    @ApiParam({
+        name: 'uid',
+        description: 'NFC卡片UID',
+        example: '04:1a:2b:3c:4d:5e:6f',
+    })
+    @ApiResponse({
+        status: 200,
+        description: '成功绑定NFC到合约',
+        schema: {
+            type: 'object',
+            properties: {
+                success: {
+                    type: 'boolean',
+                    description: '绑定是否成功',
+                    example: true,
+                },
+                message: {
+                    type: 'string',
+                    description: '绑定结果消息',
+                    example: 'NFC成功绑定到合约',
+                },
+                transactionHash: {
+                    type: 'string',
+                    description: '交易哈希',
+                    example: '0x1234567890abcdef...',
+                },
+            },
+        },
+    })
+    @ApiBadRequestResponse({
+        description: 'NFC UID格式无效或NFC未注册',
+    })
+    async bindNFCToContract(@Param('uid') uid: string): Promise<{ success: boolean; message: string; transactionHash?: string }> {
+        return this.nfcService.manualBindNFCToContract(uid);
+    }
+
     @Get('domain/check')
     @ApiOperation({
         summary: '检查域名可用性',
-        description: '检查指定的.inj域名是否可用',
+        description: '检查指定的.inj域名是否可用。系统会自动添加 advx- 前缀，最终域名格式为 advx-{输入}.inj',
     })
     @ApiQuery({
-        name: 'domain',
-        description: '域名（不包含.inj后缀）',
+        name: 'domainPrefix',
+        description: '域名后缀（不包含advx-前缀和.inj后缀，长度1-25字符，只允许小写字母、数字、连字符）',
         example: 'alice',
     })
     @ApiResponse({
@@ -118,8 +160,8 @@ export class NFCController {
             },
         },
     })
-    async checkDomainAvailability(@Query('domain') domain: string) {
-        return this.nfcService.checkDomainAvailability(domain);
+    async checkDomainAvailability(@Query('domainPrefix') domainPrefix: string) {
+        return this.nfcService.checkDomainAvailability(domainPrefix);
     }
 
     @Post('domain/register')
@@ -128,10 +170,11 @@ export class NFCController {
         summary: '注册域名NFT',
         description: `为NFC卡片注册.inj域名NFT。要求：
         1. NFC必须已注册并绑定钱包
-        2. 域名格式：3-20字符，只能包含字母、数字和连字符
-        3. 不能以连字符开始或结束
-        4. 域名全局唯一，不区分大小写
-        5. 免费注册（测试网络）
+        2. 域名后缀格式：1-25字符，只能包含小写字母、数字和连字符
+        3. 不能以连字符开始或结束，不能有连续连字符
+        4. 系统自动添加 advx- 前缀，最终域名格式为 advx-{输入}.inj
+        5. 域名全局唯一
+        6. 免费注册（测试网络）
         
         成功后将在链上铸造域名NFT并绑定到NFC钱包`
     })

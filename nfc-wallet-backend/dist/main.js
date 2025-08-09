@@ -29,7 +29,7 @@ async function bootstrap() {
         .build();
     const document = swagger_1.SwaggerModule.createDocument(app, config);
     swagger_1.SwaggerModule.setup('api', app, document);
-    const port = process.env.PORT || 3000;
+    const port = process.env.PORT || 8080;
     await app.listen(port);
     console.log(`🚀 NFC钱包API服务运行在 http://localhost:${port}`);
     console.log(`📚 API文档地址: http://localhost:${port}/api`);

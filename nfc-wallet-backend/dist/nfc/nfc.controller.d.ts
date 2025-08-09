@@ -9,7 +9,12 @@ export declare class NFCController {
     constructor(nfcService: NFCService);
     registerNFC(registerNFCDto: RegisterNFCDto): Promise<WalletResponseDto>;
     getWalletByUID(uid: string): Promise<WalletResponseDto>;
-    checkDomainAvailability(domain: string): Promise<import("./dto/domain-nft.dto").DomainAvailabilityDto>;
+    bindNFCToContract(uid: string): Promise<{
+        success: boolean;
+        message: string;
+        transactionHash?: string;
+    }>;
+    checkDomainAvailability(domainPrefix: string): Promise<import("./dto/domain-nft.dto").DomainAvailabilityDto>;
     registerDomainNFT(registerDomainDto: RegisterDomainDto): Promise<DomainNFTResponseDto>;
     unbindNFC(unbindNFCDto: UnbindNFCDto): Promise<{
         success: boolean;

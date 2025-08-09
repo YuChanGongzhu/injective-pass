@@ -8,6 +8,12 @@ import * as fs from 'fs';
 function loadABI(filename: string): any[] {
     try {
         const abiPath = path.join(__dirname, './abis', filename);
+        console.log(`Loading ABI from: ${abiPath}`);
+
+        if (!fs.existsSync(abiPath)) {
+            throw new Error(`ABI file not found: ${abiPath}`);
+        }
+
         const abiContent = fs.readFileSync(abiPath, 'utf8');
         const parsed = JSON.parse(abiContent);
         return parsed.abi || parsed; // 支持两种格式
@@ -18,7 +24,7 @@ function loadABI(filename: string): any[] {
 }
 
 // 导入合约ABI
-const CatNFTABI = loadABI('CatNFT.json');
+const CatNFTABI = loadABI('CatNFT_SocialDraw.json');
 const INJDomainNFTABI = loadABI('INJDomainNFT.json');
 const NFCWalletRegistryABI = loadABI('NFCWalletRegistry.json');
 
@@ -1199,5 +1205,224 @@ export class ContractService {
             console.error('Error in complete NFC unbind process:', error);
             return result;
         }
+    }
+
+    // =================
+    // 社交抽卡功能
+    // =================
+
+    /**
+     * NFC社交互动 (获得抽卡次数)
+     */
+    async socialInteraction(
+        myNFC: string,
+        otherNFC: string
+    ): Promise<{ success: boolean; error?: string; rewardedDraws?: number }> {
+        try {
+            if (!this.nfcCardNFTContract || !this.wallet) {
+                return {
+                    success: false,
+                    error: 'Cat NFT contract or wallet not initialized'
+                };
+            }
+
+            console.log(`社交互动: ${myNFC} -> ${otherNFC}`);
+
+            // 调用合约社交互动函数
+            const tx = await this.nfcCardNFTContract.socialInteraction(myNFC, otherNFC, {
+                gasLimit: 300000
+            });
+
+            const receipt = await tx.wait();
+
+            if (receipt.status === 1) {
+                // 解析事件获取奖励信息
+                const interactionEvent = receipt.logs.find((log: any) => {
+                    try {
+                        const parsed = this.nfcCardNFTContract.interface.parseLog(log);
+                        return parsed?.name === 'SocialInteractionCompleted';
+                    } catch {
+                        return false;
+                    }
+                });
+
+                let rewardedDraws = 1; // 默认奖励
+                if (interactionEvent) {
+                    const parsed = this.nfcCardNFTContract.interface.parseLog(interactionEvent);
+                    rewardedDraws = Number(parsed.args.rewardedDraws);
+                }
+
+                return {
+                    success: true,
+                    rewardedDraws
+                };
+            } else {
+                return {
+                    success: false,
+                    error: 'Transaction failed'
+                };
+            }
+        } catch (error) {
+            console.error('Error in social interaction:', error);
+            return {
+                success: false,
+                error: error.message || 'Unknown error'
+            };
+        }
+    }
+
+    /**
+     * 使用抽卡次数获得小猫NFT
+     */
+    async drawCatNFTWithTickets(
+        nfcUID: string,
+        catName: string,
+        userAddress: string
+    ): Promise<{ success: boolean; tokenId?: string; rarity?: string; color?: string; error?: string }> {
+        try {
+            if (!this.nfcCardNFTContract || !this.wallet) {
+                return {
+                    success: false,
+                    error: 'Cat NFT contract or wallet not initialized'
+                };
+            }
+
+            console.log(`使用抽卡次数铸造小猫: ${catName} for NFC ${nfcUID}`);
+
+            // 获取抽卡费用
+            const drawFee = await this.nfcCardNFTContract.drawFee();
+
+            // 调用合约抽卡函数
+            const tx = await this.nfcCardNFTContract.drawCatNFTWithTickets(nfcUID, catName, {
+                value: drawFee,
+                gasLimit: 500000
+            });
+
+            const receipt = await tx.wait();
+
+            if (receipt.status === 1) {
+                // 解析抽卡事件获取NFT信息
+                const drawEvent = receipt.logs.find((log: any) => {
+                    try {
+                        const parsed = this.nfcCardNFTContract.interface.parseLog(log);
+                        return parsed?.name === 'CatDrawnWithTickets';
+                    } catch {
+                        return false;
+                    }
+                });
+
+                if (drawEvent) {
+                    const parsed = this.nfcCardNFTContract.interface.parseLog(drawEvent);
+                    return {
+                        success: true,
+                        tokenId: parsed.args.tokenId.toString(),
+                        rarity: this.rarityToString(parsed.args.rarity),
+                        color: parsed.args.color
+                    };
+                }
+
+                return {
+                    success: true,
+                    tokenId: 'Unknown'
+                };
+            } else {
+                return {
+                    success: false,
+                    error: 'Transaction failed'
+                };
+            }
+        } catch (error) {
+            console.error('Error drawing cat NFT with tickets:', error);
+            return {
+                success: false,
+                error: error.message || 'Unknown error'
+            };
+        }
+    }
+
+    /**
+     * 获取NFC的抽卡统计信息
+     */
+    async getDrawStats(nfcUID: string): Promise<{
+        available: number;
+        used: number;
+        total: number;
+    }> {
+        try {
+            if (!this.nfcCardNFTContract) {
+                return { available: 0, used: 0, total: 0 };
+            }
+
+            const stats = await this.nfcCardNFTContract.getDrawStats(nfcUID);
+            return {
+                available: Number(stats.available),
+                used: Number(stats.used),
+                total: Number(stats.total)
+            };
+        } catch (error) {
+            console.error('Error getting draw stats:', error);
+            return { available: 0, used: 0, total: 0 };
+        }
+    }
+
+    /**
+     * 检查两个NFC是否已经互动过
+     */
+    async hasInteracted(nfc1: string, nfc2: string): Promise<boolean> {
+        try {
+            if (!this.nfcCardNFTContract) {
+                return false;
+            }
+
+            return await this.nfcCardNFTContract.hasInteracted(nfc1, nfc2);
+        } catch (error) {
+            console.error('Error checking interaction status:', error);
+            return false;
+        }
+    }
+
+    /**
+     * 获取NFC已互动过的所有NFC列表
+     */
+    async getInteractedNFCs(nfcUID: string): Promise<string[]> {
+        try {
+            if (!this.nfcCardNFTContract) {
+                return [];
+            }
+
+            return await this.nfcCardNFTContract.getInteractedNFCs(nfcUID);
+        } catch (error) {
+            console.error('Error getting interacted NFCs:', error);
+            return [];
+        }
+    }
+
+    /**
+     * 管理员添加抽卡次数
+     */
+    async addDrawTickets(nfcUID: string, amount: number): Promise<boolean> {
+        try {
+            if (!this.nfcCardNFTContract || !this.wallet) {
+                return false;
+            }
+
+            const tx = await this.nfcCardNFTContract.addDrawTickets(nfcUID, amount, {
+                gasLimit: 200000
+            });
+
+            const receipt = await tx.wait();
+            return receipt.status === 1;
+        } catch (error) {
+            console.error('Error adding draw tickets:', error);
+            return false;
+        }
+    }
+
+    /**
+     * 稀有度枚举转字符串
+     */
+    private rarityToString(rarity: number): string {
+        const rarities = ['R', 'SR', 'SSR', 'UR'];
+        return rarities[rarity] || 'Unknown';
     }
 } 

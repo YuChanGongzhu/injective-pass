@@ -14,17 +14,17 @@ export class RegisterDomainDto {
     uid: string;
 
     @ApiProperty({
-        description: '域名前缀（不包含.inj后缀），3-20字符，只能包含字母、数字和连字符，不能以连字符开始或结束',
+        description: '域名后缀（不包含advx-前缀和.inj后缀），1-25字符，只能包含小写字母、数字和连字符，不能以连字符开始或结束，不能有连续连字符。系统会自动添加advx-前缀',
         example: 'alice',
-        minLength: 3,
-        maxLength: 20,
-        pattern: '^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$',
+        minLength: 1,
+        maxLength: 25,
+        pattern: '^[a-z0-9]+([a-z0-9-]*[a-z0-9])?$',
     })
     @IsString()
     @IsNotEmpty()
-    @Length(3, 20)
-    @Matches(/^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$/, {
-        message: '域名格式无效：只能包含字母、数字和连字符，不能以连字符开始或结束'
+    @Length(1, 25)
+    @Matches(/^[a-z0-9]+([a-z0-9-]*[a-z0-9])?$/, {
+        message: '域名格式无效：只能包含小写字母、数字和连字符，不能以连字符开始或结束，不能有连续连字符'
     })
     domainPrefix: string;
 }

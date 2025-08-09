@@ -18,6 +18,10 @@ const fs = require("fs");
 function loadABI(filename) {
     try {
         const abiPath = path.join(__dirname, './abis', filename);
+        console.log(`Loading ABI from: ${abiPath}`);
+        if (!fs.existsSync(abiPath)) {
+            throw new Error(`ABI file not found: ${abiPath}`);
+        }
         const abiContent = fs.readFileSync(abiPath, 'utf8');
         const parsed = JSON.parse(abiContent);
         return parsed.abi || parsed;
@@ -27,7 +31,7 @@ function loadABI(filename) {
         return [];
     }
 }
-const CatNFTABI = loadABI('CatNFT.json');
+const CatNFTABI = loadABI('CatNFT_SocialDraw.json');
 const INJDomainNFTABI = loadABI('INJDomainNFT.json');
 const NFCWalletRegistryABI = loadABI('NFCWalletRegistry.json');
 let ContractService = class ContractService {
@@ -854,6 +858,169 @@ let ContractService = class ContractService {
             console.error('Error in complete NFC unbind process:', error);
             return result;
         }
+    }
+    async socialInteraction(myNFC, otherNFC) {
+        try {
+            if (!this.nfcCardNFTContract || !this.wallet) {
+                return {
+                    success: false,
+                    error: 'Cat NFT contract or wallet not initialized'
+                };
+            }
+            console.log(`社交互动: ${myNFC} -> ${otherNFC}`);
+            const tx = await this.nfcCardNFTContract.socialInteraction(myNFC, otherNFC, {
+                gasLimit: 300000
+            });
+            const receipt = await tx.wait();
+            if (receipt.status === 1) {
+                const interactionEvent = receipt.logs.find((log) => {
+                    try {
+                        const parsed = this.nfcCardNFTContract.interface.parseLog(log);
+                        return parsed?.name === 'SocialInteractionCompleted';
+                    }
+                    catch {
+                        return false;
+                    }
+                });
+                let rewardedDraws = 1;
+                if (interactionEvent) {
+                    const parsed = this.nfcCardNFTContract.interface.parseLog(interactionEvent);
+                    rewardedDraws = Number(parsed.args.rewardedDraws);
+                }
+                return {
+                    success: true,
+                    rewardedDraws
+                };
+            }
+            else {
+                return {
+                    success: false,
+                    error: 'Transaction failed'
+                };
+            }
+        }
+        catch (error) {
+            console.error('Error in social interaction:', error);
+            return {
+                success: false,
+                error: error.message || 'Unknown error'
+            };
+        }
+    }
+    async drawCatNFTWithTickets(nfcUID, catName, userAddress) {
+        try {
+            if (!this.nfcCardNFTContract || !this.wallet) {
+                return {
+                    success: false,
+                    error: 'Cat NFT contract or wallet not initialized'
+                };
+            }
+            console.log(`使用抽卡次数铸造小猫: ${catName} for NFC ${nfcUID}`);
+            const drawFee = await this.nfcCardNFTContract.drawFee();
+            const tx = await this.nfcCardNFTContract.drawCatNFTWithTickets(nfcUID, catName, {
+                value: drawFee,
+                gasLimit: 500000
+            });
+            const receipt = await tx.wait();
+            if (receipt.status === 1) {
+                const drawEvent = receipt.logs.find((log) => {
+                    try {
+                        const parsed = this.nfcCardNFTContract.interface.parseLog(log);
+                        return parsed?.name === 'CatDrawnWithTickets';
+                    }
+                    catch {
+                        return false;
+                    }
+                });
+                if (drawEvent) {
+                    const parsed = this.nfcCardNFTContract.interface.parseLog(drawEvent);
+                    return {
+                        success: true,
+                        tokenId: parsed.args.tokenId.toString(),
+                        rarity: this.rarityToString(parsed.args.rarity),
+                        color: parsed.args.color
+                    };
+                }
+                return {
+                    success: true,
+                    tokenId: 'Unknown'
+                };
+            }
+            else {
+                return {
+                    success: false,
+                    error: 'Transaction failed'
+                };
+            }
+        }
+        catch (error) {
+            console.error('Error drawing cat NFT with tickets:', error);
+            return {
+                success: false,
+                error: error.message || 'Unknown error'
+            };
+        }
+    }
+    async getDrawStats(nfcUID) {
+        try {
+            if (!this.nfcCardNFTContract) {
+                return { available: 0, used: 0, total: 0 };
+            }
+            const stats = await this.nfcCardNFTContract.getDrawStats(nfcUID);
+            return {
+                available: Number(stats.available),
+                used: Number(stats.used),
+                total: Number(stats.total)
+            };
+        }
+        catch (error) {
+            console.error('Error getting draw stats:', error);
+            return { available: 0, used: 0, total: 0 };
+        }
+    }
+    async hasInteracted(nfc1, nfc2) {
+        try {
+            if (!this.nfcCardNFTContract) {
+                return false;
+            }
+            return await this.nfcCardNFTContract.hasInteracted(nfc1, nfc2);
+        }
+        catch (error) {
+            console.error('Error checking interaction status:', error);
+            return false;
+        }
+    }
+    async getInteractedNFCs(nfcUID) {
+        try {
+            if (!this.nfcCardNFTContract) {
+                return [];
+            }
+            return await this.nfcCardNFTContract.getInteractedNFCs(nfcUID);
+        }
+        catch (error) {
+            console.error('Error getting interacted NFCs:', error);
+            return [];
+        }
+    }
+    async addDrawTickets(nfcUID, amount) {
+        try {
+            if (!this.nfcCardNFTContract || !this.wallet) {
+                return false;
+            }
+            const tx = await this.nfcCardNFTContract.addDrawTickets(nfcUID, amount, {
+                gasLimit: 200000
+            });
+            const receipt = await tx.wait();
+            return receipt.status === 1;
+        }
+        catch (error) {
+            console.error('Error adding draw tickets:', error);
+            return false;
+        }
+    }
+    rarityToString(rarity) {
+        const rarities = ['R', 'SR', 'SSR', 'UR'];
+        return rarities[rarity] || 'Unknown';
     }
 };
 exports.ContractService = ContractService;

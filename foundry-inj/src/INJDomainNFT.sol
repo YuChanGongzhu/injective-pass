@@ -109,8 +109,9 @@ contract INJDomainNFT is ERC721, ERC721URIStorage, Ownable, ReentrancyGuard {
         require(nfcRegistry.isNFCBound(nfcUID), "NFC not registered");
 
         // 验证调用者拥有该NFC
-        (address nfcWallet, , , , , ) = nfcRegistry.getNFCBinding(nfcUID);
-        require(msg.sender == nfcWallet, "You don't own this NFC");
+        INFCWalletRegistry.NFCBinding memory binding = nfcRegistry
+            .getNFCBinding(nfcUID);
+        require(msg.sender == binding.walletAddress, "You don't own this NFC");
 
         // 自动添加 advx- 前缀
         string memory domainPrefix = string(
@@ -515,16 +516,19 @@ contract INJDomainNFT is ERC721, ERC721URIStorage, Ownable, ReentrancyGuard {
         string memory nfcUID,
         address userWallet
     ) external {
-        require(msg.sender == address(nfcRegistry), "Only NFC registry can call");
+        require(
+            msg.sender == address(nfcRegistry),
+            "Only NFC registry can call"
+        );
         require(userWallet != address(0), "Invalid wallet address");
         require(bytes(nfcUID).length > 0, "Invalid NFC UID");
-        
+
         // 验证NFC确实已绑定
         require(nfcRegistry.isNFCBound(nfcUID), "NFC not bound");
-        
+
         // 自动授权用户为操作者
         authorizedOperators[userWallet] = true;
-        
+
         emit OperatorAuthorized(userWallet, true);
     }
 

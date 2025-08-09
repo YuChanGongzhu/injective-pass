@@ -11,6 +11,20 @@ export declare class InjectiveService {
     private catNFTContract;
     constructor(configService: ConfigService);
     private initializeContracts;
+    detectAndBindBlankCard(nfcUID: string, userWalletAddress: string): Promise<{
+        success: boolean;
+        txHash?: string;
+        error?: string;
+    }>;
+    isNFCBound(nfcUID: string): Promise<boolean>;
+    getNFCBinding(nfcUID: string): Promise<{
+        walletAddress: string;
+        boundAt: number;
+        unboundAt: number;
+        isActive: boolean;
+        isBlank: boolean;
+        metadata: string;
+    } | null>;
     private getChainId;
     generateInjectiveWallet(): {
         privateKey: string;
@@ -55,7 +69,7 @@ export declare class InjectiveService {
         rpcUrl: string;
         restUrl: string;
     };
-    mintDomainNFT(ownerAddress: string, domainName: string, nfcUID: string, tokenId: string): Promise<{
+    mintDomainNFT(ownerAddress: string, domainName: string, nfcUID: string, tokenId: string, userPrivateKey: string): Promise<{
         success: boolean;
         txHash?: string;
         error?: string;
@@ -69,14 +83,20 @@ export declare class InjectiveService {
         rarity?: string;
         color?: string;
     }>;
-    socialInteraction(myNFC: string, otherNFC: string): Promise<{
+    socialInteraction(myNFC: string, otherNFC: string, userPrivateKey: string): Promise<{
         success: boolean;
         txHash?: string;
         error?: string;
         rewardTickets?: number;
         totalTickets?: number;
     }>;
-    drawCatNFTWithTickets(ownerAddress: string, nfcUID: string, catName: string): Promise<{
+    checkUserAuthorization(userAddress: string): Promise<boolean>;
+    authorizeUser(userAddress: string): Promise<{
+        success: boolean;
+        txHash?: string;
+        error?: string;
+    }>;
+    drawCatNFTWithTickets(ownerAddress: string, nfcUID: string, catName: string, userPrivateKey: string): Promise<{
         success: boolean;
         txHash?: string;
         error?: string;

@@ -74,4 +74,25 @@ export declare class ContractService {
         nftBurned: boolean;
         success: boolean;
     }>;
+    socialInteraction(myNFC: string, otherNFC: string): Promise<{
+        success: boolean;
+        error?: string;
+        rewardedDraws?: number;
+    }>;
+    drawCatNFTWithTickets(nfcUID: string, catName: string, userAddress: string): Promise<{
+        success: boolean;
+        tokenId?: string;
+        rarity?: string;
+        color?: string;
+        error?: string;
+    }>;
+    getDrawStats(nfcUID: string): Promise<{
+        available: number;
+        used: number;
+        total: number;
+    }>;
+    hasInteracted(nfc1: string, nfc2: string): Promise<boolean>;
+    getInteractedNFCs(nfcUID: string): Promise<string[]>;
+    addDrawTickets(nfcUID: string, amount: number): Promise<boolean>;
+    private rarityToString;
 }
