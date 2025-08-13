@@ -17,6 +17,47 @@
 - **健康检查**: 完善的服务监控和错误处理
 - **CORS 支持**: 跨域请求处理
 
+## 🧭 系统设计速览（给协作同学）
+
+本后端是一个基于 NestJS 的“链抽象网关 + 账号资产服务”，面向 Injective EVM：
+
+- 角色与职责
+  - API 层（NestJS）: 暴露 NFC/域名/NFT/用户等 REST 接口与 Swagger 文档
+  - 合约访问层（ethers + @injectivelabs/sdk-ts）: 与三类合约交互 `NFCWalletRegistry`、`INJDomainNFT`、`CatNFT_SocialDraw`
+  - 数据层（Prisma/PostgreSQL）: 落库用户、NFC 卡、交易、猫咪 NFT 等业务数据
+  - 安全层（AES-256-GCM + JWT + Helmet/CORS）: 私钥加密存储、接口鉴权与安全头
+
+- 模块划分（`src/`）
+  - `nfc/`: 控制器与服务，编排业务流程（注册/绑定/社交互动/抽卡/统计）
+  - `contract/`: `injective.service.ts`（银行与 EVM 交易、授权与抽卡）、`contract.service.ts`（EVM 合约便捷封装）
+  - `crypto/`: 私钥加解密与钱包生成
+  - `prisma/`: 数据库访问
+
+- 核心数据模型（Prisma 简述）
+  - `User(1) ↔ NFCCard(1)`: 一人一卡绑定；`User` 持 inj/eth 地址、加密私钥、域名、初始化资金标记
+  - `CatNFT(*)`: 用户持有的猫咪 NFT（tokenId/rarity/color/metadata）
+  - `Transaction(*)`: 记录链上交易哈希/金额/状态/原始回执
+
+- 关键链上交互
+  - 绑定: `detectAndBindBlankCard(nfcUID, userEth)`（注册后自动/手动）
+  - 社交: `socialInteraction(myNFC, otherNFC)`（获券，需操作者授权）
+  - 抽卡: `drawCatNFTWithTickets(nfcUID, catName)`（消耗 1 张券 + drawFee）
+  - 域名: `mintDomainNFT(domainSuffix, nfcUID, metadata)`（生成 `advx-<suffix>.inj`）
+
+- 端到端典型流程
+  1) 注册 NFC → 生成/落库钱包（inj/eth）→ 发送初始资金（inj 地址）→ 合约自动绑定
+  2) 社交互动换券（自动授权缺省用户）
+  3) 用券抽卡（花费 drawFee + gas，入库 NFT 与交易）
+  4) 可选注册域名（需已 funded）
+
+- 研发与联调要点
+  - 所有写入交易都通过后台“以用户私钥签名”或“合约 owner 授权”方式完成
+  - EVM 交易用 `ethers`，银行转账与账户信息用 `@injectivelabs/sdk-ts`
+  - ABI 位于 `src/contract/abis/`（构建时由 `copy-abis.js` 写入）
+  - 推荐先读 `TEST_FLOW_GUIDE.md` 快速过一遍 CLI 流程
+
+提示：近期修复汇总见 `REPAIR_REPORT.md`，包含初始资金地址规范化、合约路由注册、CatNFT ABI 更正与 DB 唯一冲突回退。
+
 ## 🚀 快速开始
 
 ### 系统要求
