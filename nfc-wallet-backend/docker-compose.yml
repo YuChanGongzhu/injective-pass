@@ -43,7 +43,7 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: development
-      PORT: 3000
+      PORT: 8080
       DATABASE_URL: "postgresql://nfc_user:secure_password_123@postgres:5432/nfc_wallet?schema=public"
       AES_ENCRYPTION_KEY: "8ae40a4aa398d775f6b3ff48079003f45d1c90369f331defa1ea9f79ab85b759"
       JWT_SECRET: "DeF9z3wcr88RtKI8bSVhs8wZWNYZPK7OL6/sx2WhSxU="
@@ -59,11 +59,11 @@ services:
       DOMAIN_REGISTRY_ADDRESS: "0xf978481B334ba5572717c528ba730EF4A12DA191"
       CAT_NFT_ADDRESS: "0x049B99fc53a39e8eF6DC725EBA32f0FCd7053c22"
     ports:
-      - "8080:3000"
+      - "8080:8080"
     volumes:
       - ./logs:/app/logs
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:3000/api/nfc/stats" ]
+      test: [ "CMD", "curl", "-f", "http://localhost:8080/api/nfc/stats" ]
       interval: 30s
       timeout: 10s
       retries: 3

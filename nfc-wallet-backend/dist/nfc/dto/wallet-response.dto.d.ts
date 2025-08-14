@@ -17,13 +17,11 @@ export declare class WalletResponseDto {
     ethAddress: string;
     domain?: string;
     domainTokenId?: string;
-    domainImageUrl?: string;
     initialFunded: boolean;
     domainRegistered: boolean;
     nfcCard?: NFCCardDto;
     recentTransactions: TransactionDto[];
     isNewWallet: boolean;
-    initialFundTxHash?: string;
 }
 export declare class TransactionResponseDto {
     success: boolean;

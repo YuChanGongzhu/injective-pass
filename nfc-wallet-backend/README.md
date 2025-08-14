@@ -17,6 +17,47 @@
 - **健康检查**: 完善的服务监控和错误处理
 - **CORS 支持**: 跨域请求处理
 
+## 🧭 系统设计速览（给协作同学）
+
+本后端是一个基于 NestJS 的“链抽象网关 + 账号资产服务”，面向 Injective EVM：
+
+- 角色与职责
+  - API 层（NestJS）: 暴露 NFC/域名/NFT/用户等 REST 接口与 Swagger 文档
+  - 合约访问层（ethers + @injectivelabs/sdk-ts）: 与三类合约交互 `NFCWalletRegistry`、`INJDomainNFT`、`CatNFT_SocialDraw`
+  - 数据层（Prisma/PostgreSQL）: 落库用户、NFC 卡、交易、猫咪 NFT 等业务数据
+  - 安全层（AES-256-GCM + JWT + Helmet/CORS）: 私钥加密存储、接口鉴权与安全头
+
+- 模块划分（`src/`）
+  - `nfc/`: 控制器与服务，编排业务流程（注册/绑定/社交互动/抽卡/统计）
+  - `contract/`: `injective.service.ts`（银行与 EVM 交易、授权与抽卡）、`contract.service.ts`（EVM 合约便捷封装）
+  - `crypto/`: 私钥加解密与钱包生成
+  - `prisma/`: 数据库访问
+
+- 核心数据模型（Prisma 简述）
+  - `User(1) ↔ NFCCard(1)`: 一人一卡绑定；`User` 持 inj/eth 地址、加密私钥、域名、初始化资金标记
+  - `CatNFT(*)`: 用户持有的猫咪 NFT（tokenId/rarity/color/metadata）
+  - `Transaction(*)`: 记录链上交易哈希/金额/状态/原始回执
+
+- 关键链上交互
+  - 绑定: `detectAndBindBlankCard(nfcUID, userEth)`（注册后自动/手动）
+  - 社交: `socialInteraction(myNFC, otherNFC)`（获券，需操作者授权）
+  - 抽卡: `drawCatNFTWithTickets(nfcUID, catName)`（消耗 1 张券 + drawFee）
+  - 域名: `mintDomainNFT(domainSuffix, nfcUID, metadata)`（生成 `advx-<suffix>.inj`）
+
+- 端到端典型流程
+  1) 注册 NFC → 生成/落库钱包（inj/eth）→ 发送初始资金（inj 地址）→ 合约自动绑定
+  2) 社交互动换券（自动授权缺省用户）
+  3) 用券抽卡（花费 drawFee + gas，入库 NFT 与交易）
+  4) 可选注册域名（需已 funded）
+
+- 研发与联调要点
+  - 所有写入交易都通过后台“以用户私钥签名”或“合约 owner 授权”方式完成
+  - EVM 交易用 `ethers`，银行转账与账户信息用 `@injectivelabs/sdk-ts`
+  - ABI 位于 `src/contract/abis/`（构建时由 `copy-abis.js` 写入）
+  - 推荐先读 `TEST_FLOW_GUIDE.md` 快速过一遍 CLI 流程
+
+提示：近期修复汇总见 `REPAIR_REPORT.md`，包含初始资金地址规范化、合约路由注册、CatNFT ABI 更正与 DB 唯一冲突回退。
+
 ## 🚀 快速开始
 
 ### 系统要求
@@ -34,8 +75,19 @@ cd nfc-wallet-backend
 
 2. **配置环境变量**
 ```bash
+# 复制环境变量模板
 cp .env.example .env
-# 编辑 .env 文件配置必要参数
+
+# 编辑 .env 文件，配置以下必要参数：
+# - DATABASE_URL: PostgreSQL 数据库连接字符串
+# - AES_ENCRYPTION_KEY: 32字节十六进制加密密钥
+# - JWT_SECRET: JWT 认证密钥
+# - CONTRACT_PRIVATE_KEY: 合约部署者私钥
+# - NFC_REGISTRY_ADDRESS: NFC钱包注册合约地址
+# - DOMAIN_REGISTRY_ADDRESS: 域名NFT合约地址  
+# - CAT_NFT_ADDRESS: 猫咪NFT合约地址
+
+# ⚠️ 重要：请不要将 .env 文件提交到 Git！
 ```
 
 3. **启动服务**
@@ -136,24 +188,94 @@ Content-Type: application/json
 ```
 
 #### NFT 管理
+
+**社交互动获取抽卡次数**
+```http
+POST /nfc/social-interaction
+Content-Type: application/json
+
+{
+  "myNFC": "04:ab:cd:ef:12:34:56",
+  "otherNFC": "04:fe:dc:ba:98:76:54"
+}
+```
+
+**使用抽卡次数抽取猫咪NFT**
+```http
+POST /nfc/draw-cat-with-tickets
+Content-Type: application/json
+
+{
+  "nfcUid": "04:ab:cd:ef:12:34:56",
+  "catName": "小花"
+}
+```
+
+**传统抽卡方式（付费）**
 ```http
 POST /nfc/draw-cat
 Content-Type: application/json
 
 {
-  "nfcUid": "04:ab:cd:ef:12:34:56"
+  "nfcUid": "04:ab:cd:ef:12:34:56",
+  "catName": "小花"
 }
 ```
 
 #### 查询接口
+
+**系统统计**
 ```http
 GET /nfc/stats
+```
+
+**用户所有NFT**
+```http
 GET /nfc/user-nfts/{walletAddress}
+```
+
+**用户域名NFT**
+```http
 GET /nfc/user-domain-nft/{walletAddress}
+```
+
+**用户猫咪NFT**
+```http
 GET /nfc/user-cat-nfts/{walletAddress}
 ```
 
+**NFC抽卡统计信息**
+```http
+GET /nfc/draw-stats/{nfcUID}
+
+Response:
+{
+  "success": true,
+  "data": {
+    "availableDraws": 3,      // 可用抽卡次数
+    "usedDraws": 7,           // 已使用抽卡次数
+    "totalDraws": 10,         // 总获得抽卡次数
+    "socialBonus": 15         // 社交奖励值
+  }
+}
+```
+
+**获取已互动的NFC列表**
+```http
+GET /nfc/interacted-nfcs/{nfcUID}
+
+Response:
+{
+  "success": true,
+  "data": {
+    "interactedNFCs": ["04:aa:bb:cc:dd:ee:ff", "04:11:22:33:44:55:66"]
+  }
+}
+```
+
 ### 响应格式
+
+**成功响应**
 ```json
 {
   "success": true,
@@ -166,20 +288,129 @@ GET /nfc/user-cat-nfts/{walletAddress}
 }
 ```
 
-## 🎨 NFT 图片系统
+**社交互动响应**
+```json
+{
+  "success": true,
+  "data": {
+    "transactionHash": "0x...",
+    "rewardTickets": 1,
+    "totalTickets": 3
+  },
+  "message": "社交互动成功，获得1张抽卡券"
+}
+```
 
-### 域名 NFT
-- **统一图片**: 所有域名 NFT 使用统一的 fir.png 图片
-- **IPFS URL**: `https://tan-academic-booby-265.mypinata.cloud/ipfs/QmSKhPCqxqJk8XgLeTvCNBbbE3n3wqZUb6xJfkGr4A3Hxs/fir.png`
+**抽卡响应**
+```json
+{
+  "success": true,
+  "data": {
+    "transactionHash": "0x...",
+    "tokenId": "123",
+    "catName": "小花",
+    "rarity": "SR",
+    "color": "橙色",
+    "imageUrl": "https://tan-academic-booby-265.mypinata.cloud/ipfs/QmW5vB4dT8YzN3jF7LqV5rX2cK9gE6bR8tN4mZ3hU1sQ7w/cat_orange.png"
+  },
+  "message": "抽卡成功"
+}
+```
 
-### 猫咪 NFT (7种颜色)
-1. **黑猫**: `QmPNjcjhkZCBdqcUzqCfcP5Mj3HdmZzZs9uEHfhV4qsJ8m/cat_black.png`
-2. **绿猫**: `QmT8hQs4YZwL2B3dVsEfKcVjMz8CdRz4pXgY7QvT6nW9k4/cat_green.png`
-3. **红猫**: `QmR7vN8gL3FsV2jZ6PcXtWnK4dT9z5eQm1BxY2MpS8uL9k/cat_red.png`
-4. **橙猫**: `QmW5vB4dT8YzN3jF7LqV5rX2cK9gE6bR8tN4mZ3hU1sQ7w/cat_orange.png`
-5. **紫猫**: `QmY3kJ7mZ2TvF8dE5BqX4wL6pR9cU2nV8zG1sK4hM7tQ9x/cat_purple.png`
-6. **蓝猫**: `QmF7kT6nR8BzD2jU3HsK4vE9mY1cW5pQ8gL7xV2tN4zM6k/cat_blue.png`
-7. **彩虹猫**: `QmN2bV8wK9TzU3jR7LsE4mD6cY1qX5pF8nK2vW9hR7tL4z/cat_rainbow.png`
+**错误响应**
+```json
+{
+  "success": false,
+  "error": "No draw tickets available",
+  "message": "没有可用的抽卡次数"
+}
+```
+
+## 📋 智能合约接口说明
+
+### CatNFT 合约 (0x10fd6cC8d9272caC010224A93e1FA00Ce291E6D8)
+
+#### 核心功能函数
+
+**社交互动函数**
+```solidity
+function socialInteraction(string memory myNFC, string memory otherNFC) external nonReentrant onlyAuthorizedOperator
+```
+- **功能**: 用户通过NFC社交互动获取抽卡次数
+- **参数**: 
+  - `myNFC`: 自己的NFC UID
+  - `otherNFC`: 其他用户的NFC UID
+- **限制**: 
+  - 两个NFC必须都已注册
+  - 不能与自己互动
+  - 每对NFC只能互动一次
+  - 只有授权操作员可调用
+- **奖励**: 每次成功互动获得1张抽卡券
+
+**抽卡函数**
+```solidity
+function drawCatNFTWithTickets(string memory nfcUID, string memory catName) external payable nonReentrant onlyAuthorizedOperator
+```
+- **功能**: 使用抽卡次数抽取猫咪NFT
+- **参数**: 
+  - `nfcUID`: NFC UID
+  - `catName`: 猫咪名称（可重复）
+- **限制**: 
+  - 需要至少1张抽卡券
+  - 需要支付手续费（drawFee）
+  - NFC必须已注册
+  - 每个钱包最多拥有20只猫
+- **稀有度**: 基于社交互动次数提升稀有度概率
+
+#### 查询函数
+
+**获取可用抽卡次数**
+```solidity
+function getAvailableDrawCount(string memory nfcUID) external view returns (uint256)
+```
+
+**获取已使用抽卡次数**
+```solidity
+function getTotalDrawsUsed(string memory nfcUID) external view returns (uint256)
+```
+
+**获取抽卡统计**
+```solidity
+function getDrawStats(string memory nfcUID) external view returns (uint256 available, uint256 used, uint256 total)
+```
+
+**获取社交奖励值**
+```solidity
+function getSocialBonus(string memory nfcUID) external view returns (uint256)
+```
+
+**获取已互动NFC列表**
+```solidity
+function getInteractedNFCs(string memory nfcUID) external view returns (string[] memory)
+```
+
+#### 稀有度系统
+
+**稀有度等级** (基础概率)
+- **R**: 65% (普通)
+- **SR**: 25% (稀有) 
+- **SSR**: 8% (超稀有)
+- **UR**: 2% (极稀有)
+
+**社交奖励机制**
+- 每次社交互动增加社交奖励值
+- 社交奖励值提升稀有度概率：
+  - UR概率 += 社交奖励值 ÷ 4
+  - SSR概率 += 社交奖励值 ÷ 2  
+  - SR概率 += 社交奖励值
+
+### 重要变更说明
+
+**与旧版本的区别**:
+1. **分离功能**: 社交互动和抽卡现在是两个独立的函数
+2. **抽卡券系统**: 通过社交互动获得抽卡券，然后消费抽卡券抽取NFT
+3. **猫名可重复**: 移除了全局唯一猫名限制
+4. **社交奖励**: 增加了基于社交互动的稀有度提升机制
 
 ## 🔧 配置参数
 
@@ -206,7 +437,7 @@ CONTRACT_PRIVATE_KEY="your-private-key-here"
 # 合约地址
 NFC_REGISTRY_ADDRESS="0x775D0D30dc990b8068768CCE58ad47ff167700cf"
 DOMAIN_REGISTRY_ADDRESS="0xf978481B334ba5572717c528ba730EF4A12DA191"
-CAT_NFT_ADDRESS="0x049B99fc53a39e8eF6DC725EBA32f0FCd7053c22"
+CATNFT_CONTRACT_ADDRESS="0x10fd6cC8d9272caC010224A93e1FA00Ce291E6D8"
 ```
 
 ### Docker Compose 端口配置
@@ -276,10 +507,26 @@ curl -X POST http://localhost:8080/api/nfc/register-domain \
   -H "Content-Type: application/json" \
   -d '{"nfcUid":"04:ab:cd:ef:12:34:56","domainName":"test"}'
 
-# 猫咪 NFT 测试
+# 社交互动测试
+curl -X POST http://localhost:8080/api/nfc/social-interaction \
+  -H "Content-Type: application/json" \
+  -d '{"myNFC":"04:ab:cd:ef:12:34:56","otherNFC":"04:fe:dc:ba:98:76:54"}'
+
+# 使用抽卡券抽取猫咪NFT
+curl -X POST http://localhost:8080/api/nfc/draw-cat-with-tickets \
+  -H "Content-Type: application/json" \
+  -d '{"nfcUid":"04:ab:cd:ef:12:34:56","catName":"小花"}'
+
+# 传统付费抽卡
 curl -X POST http://localhost:8080/api/nfc/draw-cat \
   -H "Content-Type: application/json" \
-  -d '{"nfcUid":"04:ab:cd:ef:12:34:56"}'
+  -d '{"nfcUid":"04:ab:cd:ef:12:34:56","catName":"小花"}'
+
+# 查询抽卡统计
+curl http://localhost:8080/api/nfc/draw-stats/04:ab:cd:ef:12:34:56
+
+# 查询已互动NFC列表
+curl http://localhost:8080/api/nfc/interacted-nfcs/04:ab:cd:ef:12:34:56
 ```
 
 ### 容器健康检查

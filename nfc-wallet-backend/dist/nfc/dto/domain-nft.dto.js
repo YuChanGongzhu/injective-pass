@@ -18,7 +18,9 @@ exports.RegisterDomainDto = RegisterDomainDto;
 __decorate([
     (0, swagger_1.ApiProperty)({
         description: 'NFC卡片的唯一标识符',
-        example: '04:f3:a1:8a:b2:5d:80:abc123',
+        example: '04:f3:a1:8a:b2:5d:80',
+        minLength: 1,
+        maxLength: 255,
     }),
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.IsNotEmpty)(),
@@ -27,12 +29,18 @@ __decorate([
 ], RegisterDomainDto.prototype, "uid", void 0);
 __decorate([
     (0, swagger_1.ApiProperty)({
-        description: '域名前缀（不包含.inj后缀）',
+        description: '域名后缀（不包含advx-前缀和.inj后缀），1-25字符，只能包含小写字母、数字和连字符，不能以连字符开始或结束，不能有连续连字符。系统会自动添加advx-前缀',
         example: 'alice',
+        minLength: 1,
+        maxLength: 25,
+        pattern: '^[a-z0-9]+([a-z0-9-]*[a-z0-9])?$',
     }),
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.IsNotEmpty)(),
-    (0, class_validator_1.Length)(3, 30),
+    (0, class_validator_1.Length)(1, 25),
+    (0, class_validator_1.Matches)(/^[a-z0-9]+([a-z0-9-]*[a-z0-9])?$/, {
+        message: '域名格式无效：只能包含小写字母、数字和连字符，不能以连字符开始或结束，不能有连续连字符'
+    }),
     __metadata("design:type", String)
 ], RegisterDomainDto.prototype, "domainPrefix", void 0);
 class DomainNFTResponseDto {
@@ -66,13 +74,6 @@ __decorate([
     }),
     __metadata("design:type", Date)
 ], DomainNFTResponseDto.prototype, "registeredAt", void 0);
-__decorate([
-    (0, swagger_1.ApiProperty)({
-        description: '域名NFT图片URL',
-        example: 'https://bafybeih4nkltzoflarix3ghpjpemjyg2vcu2sywi4wku4uthhacs5uoh2a.ipfs.w3s.link/fir.png',
-    }),
-    __metadata("design:type", String)
-], DomainNFTResponseDto.prototype, "imageUrl", void 0);
 class DomainAvailabilityDto {
 }
 exports.DomainAvailabilityDto = DomainAvailabilityDto;

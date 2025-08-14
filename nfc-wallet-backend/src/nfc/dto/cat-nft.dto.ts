@@ -1,19 +1,158 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, Length, IsOptional } from 'class-validator';
+import { IsString, IsNotEmpty, Length, IsOptional, Matches } from 'class-validator';
 
-export class DrawCatNFTDto {
+export class SocialInteractionDto {
     @ApiProperty({
-        description: 'NFC卡片UID',
+        description: '自己的NFC卡片UID',
         example: '04:1a:2b:3c:4d:5e:6f',
+        minLength: 1,
+        maxLength: 255,
     })
     @IsString()
     @IsNotEmpty()
     @Length(1, 255)
-    nfcUID: string;
+    myNFC: string;
 
     @ApiProperty({
-        description: '小猫名称',
+        description: '其他用户的NFC卡片UID（必须与myNFC不同）',
+        example: '04:2b:3c:4d:5e:6f:7a',
+        minLength: 1,
+        maxLength: 255,
+    })
+    @IsString()
+    @IsNotEmpty()
+    @Length(1, 255)
+    otherNFC: string;
+}
+
+export class DrawCatWithTicketsDto {
+    @ApiProperty({
+        description: 'NFC卡片UID',
+        example: '04:1a:2b:3c:4d:5e:6f',
+        minLength: 1,
+        maxLength: 255,
+    })
+    @IsString()
+    @IsNotEmpty()
+    @Length(1, 255)
+    nfcUid: string;
+
+    @ApiProperty({
+        description: '小猫名称（可重复）',
         example: 'Lucky Cat',
+        minLength: 1,
+        maxLength: 100,
+    })
+    @IsString()
+    @IsNotEmpty()
+    @Length(1, 100)
+    catName: string;
+}
+
+export class DrawCatTraditionalDto {
+    @ApiProperty({
+        description: 'NFC卡片UID',
+        example: '04:1a:2b:3c:4d:5e:6f',
+        minLength: 1,
+        maxLength: 255,
+    })
+    @IsString()
+    @IsNotEmpty()
+    @Length(1, 255)
+    nfcUid: string;
+
+    @ApiProperty({
+        description: '小猫名称（可重复）',
+        example: 'Lucky Cat',
+        minLength: 1,
+        maxLength: 100,
+    })
+    @IsString()
+    @IsNotEmpty()
+    @Length(1, 100)
+    catName: string;
+}
+
+export class SocialInteractionResponseDto {
+    @ApiProperty({
+        description: '交易哈希',
+        example: '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+    })
+    transactionHash: string;
+
+    @ApiProperty({
+        description: '获得的抽卡券数量',
+        example: 1,
+    })
+    rewardTickets: number;
+
+    @ApiProperty({
+        description: '总抽卡券数量',
+        example: 3,
+    })
+    totalTickets: number;
+
+    @ApiProperty({
+        description: '操作结果描述',
+        example: '社交互动成功，获得1张抽卡券',
+    })
+    message: string;
+}
+
+export class DrawStatsDto {
+    @ApiProperty({
+        description: '可用抽卡次数',
+        example: 3,
+    })
+    availableDraws: number;
+
+    @ApiProperty({
+        description: '已使用抽卡次数',
+        example: 7,
+    })
+    usedDraws: number;
+
+    @ApiProperty({
+        description: '总获得抽卡次数',
+        example: 10,
+    })
+    totalDraws: number;
+
+    @ApiProperty({
+        description: '社交奖励值',
+        example: 15,
+    })
+    socialBonus: number;
+}
+
+export class DrawCatNFTDto {
+    @ApiProperty({
+        description: '自己的NFC卡片UID',
+        example: '04:1a:2b:3c:4d:5e:6f',
+        minLength: 1,
+        maxLength: 255,
+    })
+    @IsString()
+    @IsNotEmpty()
+    @Length(1, 255)
+    myNFC: string;
+
+    @ApiProperty({
+        description: '其他用户的NFC卡片UID（社交抽卡，必须与myNFC不同）',
+        example: '04:2b:3c:4d:5e:6f:7a',
+        minLength: 1,
+        maxLength: 255,
+    })
+    @IsString()
+    @IsNotEmpty()
+    @Length(1, 255)
+    otherNFC: string;
+
+    @ApiProperty({
+        description: '小猫名称（可重复）',
+        example: 'Lucky Cat',
+        minLength: 1,
+        maxLength: 100,
     })
     @IsString()
     @IsNotEmpty()
@@ -98,4 +237,37 @@ export class CatNFTListDto {
         example: 1,
     })
     totalPages: number;
-} 
+}
+
+export class SocialStatsDto {
+    @ApiProperty({
+        description: 'NFC UID',
+        example: '04:1a:2b:3c:4d:5e:6f',
+    })
+    nfcUID: string;
+
+    @ApiProperty({
+        description: '总抽卡次数',
+        example: 5,
+    })
+    drawCount: number;
+
+    @ApiProperty({
+        description: '已互动的NFC数量',
+        example: 3,
+    })
+    interactedCount: number;
+
+    @ApiProperty({
+        description: '已互动的NFC列表',
+        type: [String],
+        example: ['04:2b:3c:4d:5e:6f:7a', '04:3c:4d:5e:6f:7a:8b'],
+    })
+    interactedNFCs: string[];
+
+    @ApiProperty({
+        description: '社交奖励概率加成 (基点)',
+        example: 250, // 2.5%
+    })
+    socialBonus: number;
+}

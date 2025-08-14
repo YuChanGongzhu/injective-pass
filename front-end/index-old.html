@@ -1304,6 +1304,7 @@
 
     /* Android优化 */
     @supports (-webkit-appearance: none) {
+
       /* WebKit浏览器优化 */
       .nfc-scan-container,
       .ecosystem-card,
@@ -1316,6 +1317,7 @@
 
     /* Android Chrome优化 */
     @media screen and (-webkit-min-device-pixel-ratio: 0) {
+
       .nfc-scan-container,
       .ecosystem-card,
       .activity-item,
@@ -4578,7 +4580,7 @@
       if (isAndroid()) {
         // 添加Android特定的CSS类
         document.body.classList.add('android-device');
-        
+
         // 优化动画性能
         const style = document.createElement('style');
         style.textContent = `
@@ -5717,11 +5719,11 @@
       }, 100);
     }
   </script>
-  
 
 
 
-  
+
+
 </body>
 
 </html>

@@ -18,9 +18,21 @@ const utils_1 = require("@injectivelabs/utils");
 const networks_1 = require("@injectivelabs/networks");
 const path = require("path");
 const fs = require("fs");
-const NFCWalletRegistryABI = JSON.parse(fs.readFileSync(path.join(__dirname, '../../src/contract/abis/NFCWalletRegistry.json'), 'utf8')).abi;
-const INJDomainNFTABI = JSON.parse(fs.readFileSync(path.join(__dirname, '../../src/contract/abis/INJDomainNFT.json'), 'utf8')).abi;
-const CatNFTABI = JSON.parse(fs.readFileSync(path.join(__dirname, '../../src/contract/abis/CatNFT.json'), 'utf8')).abi;
+function loadABI(filename) {
+    try {
+        const abiPath = path.join(__dirname, './abis', filename);
+        const abiContent = fs.readFileSync(abiPath, 'utf8');
+        const parsed = JSON.parse(abiContent);
+        return parsed.abi || parsed;
+    }
+    catch (error) {
+        console.error(`Failed to load ABI from ${filename}:`, error);
+        return [];
+    }
+}
+const NFCWalletRegistryABI = loadABI('NFCWalletRegistry.json');
+const INJDomainNFTABI = loadABI('INJDomainNFT.json');
+const CatNFTABI = loadABI('CatNFT_SocialDraw.json');
 let InjectiveService = class InjectiveService {
     constructor(configService) {
         this.configService = configService;
@@ -54,6 +66,69 @@ let InjectiveService = class InjectiveService {
         }
         catch (error) {
             console.error('合约初始化失败:', error);
+        }
+    }
+    async detectAndBindBlankCard(nfcUID, userWalletAddress) {
+        try {
+            if (!this.nfcRegistryContract) {
+                throw new Error('NFCWalletRegistry合约未初始化');
+            }
+            console.log(`开始绑定空白NFC卡片: ${nfcUID} -> ${userWalletAddress}`);
+            const tx = await this.nfcRegistryContract.detectAndBindBlankCard(nfcUID, userWalletAddress, {
+                gasLimit: 500000,
+                gasPrice: (0, ethers_1.parseEther)('0.00000002')
+            });
+            console.log(`NFC绑定交易已发送，交易哈希: ${tx.hash}`);
+            const receipt = await tx.wait();
+            if (receipt.status === 1) {
+                console.log(`NFC绑定成功: ${nfcUID} -> ${userWalletAddress}, 交易哈希: ${tx.hash}`);
+                return {
+                    success: true,
+                    txHash: tx.hash
+                };
+            }
+            else {
+                throw new Error('交易失败');
+            }
+        }
+        catch (error) {
+            console.error('NFC绑定失败:', error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+    async isNFCBound(nfcUID) {
+        try {
+            if (!this.nfcRegistryContract) {
+                return false;
+            }
+            return await this.nfcRegistryContract.isNFCBound(nfcUID);
+        }
+        catch (error) {
+            console.error('检查NFC绑定状态失败:', error);
+            return false;
+        }
+    }
+    async getNFCBinding(nfcUID) {
+        try {
+            if (!this.nfcRegistryContract) {
+                return null;
+            }
+            const binding = await this.nfcRegistryContract.getNFCBinding(nfcUID);
+            return {
+                walletAddress: binding[0],
+                boundAt: Number(binding[1]),
+                unboundAt: Number(binding[2]),
+                isActive: binding[3],
+                isBlank: binding[4],
+                metadata: binding[5]
+            };
+        }
+        catch (error) {
+            console.error('获取NFC绑定信息失败:', error);
+            return null;
         }
     }
     getChainId() {
@@ -179,13 +254,14 @@ let InjectiveService = class InjectiveService {
                     error: `主账户余额不足: ${masterBalance.inj} INJ, 需要: ${amount} INJ`
                 };
             }
+            const normalizedDst = toAddress.startsWith('inj') ? toAddress : (0, sdk_ts_1.getInjectiveAddress)(toAddress);
             const msg = sdk_ts_1.MsgSend.fromJSON({
                 amount: {
                     denom: 'inj',
                     amount: new utils_1.BigNumberInBase(amount).toWei().toFixed()
                 },
                 srcInjectiveAddress: masterAddress,
-                dstInjectiveAddress: toAddress
+                dstInjectiveAddress: normalizedDst
             });
             const broadcaster = new sdk_ts_1.MsgBroadcasterWithPk({
                 privateKey: privateKey,
@@ -202,7 +278,7 @@ let InjectiveService = class InjectiveService {
                     rawTx: {
                         type: 'SEND',
                         from: masterAddress,
-                        to: toAddress,
+                        to: normalizedDst,
                         amount: amount,
                         denom: 'inj',
                         txHash: txResponse.txHash,
@@ -314,16 +390,19 @@ let InjectiveService = class InjectiveService {
             restUrl: this.endpoints.rest
         };
     }
-    async mintDomainNFT(ownerAddress, domainName, nfcUID, tokenId, metadata) {
+    async mintDomainNFT(ownerAddress, domainName, nfcUID, tokenId, userPrivateKey) {
         try {
             if (!this.domainNFTContract) {
                 throw new Error('域名NFT合约未初始化');
             }
-            const domainPrefix = domainName.replace('.inj', '');
-            const metadataURI = 'https://bafybeih4nkltzoflarix3ghpjpemjyg2vcu2sywi4wku4uthhacs5uoh2a.ipfs.w3s.link/fir.png';
-            console.log(`开始铸造域名NFT: ${domainName} -> ${ownerAddress}, NFC: ${nfcUID}`);
-            console.log(`使用元数据URI: ${metadataURI}`);
-            const tx = await this.domainNFTContract.mintDomainNFT(domainPrefix, nfcUID, metadataURI, {
+            let domainSuffix = domainName.replace('.inj', '');
+            if (domainSuffix.startsWith('advx-')) {
+                domainSuffix = domainSuffix.replace('advx-', '');
+            }
+            console.log(`开始铸造域名NFT: ${domainName} -> ${ownerAddress}, NFC: ${nfcUID}, 域名后缀: ${domainSuffix}`);
+            const userWallet = new ethers_1.Wallet(userPrivateKey, this.evmProvider);
+            const userDomainNFTContract = new ethers_1.Contract(this.configService.get('DOMAIN_REGISTRY_ADDRESS'), INJDomainNFTABI, userWallet);
+            const tx = await userDomainNFTContract.mintDomainNFT(domainSuffix, nfcUID, '', {
                 gasLimit: 500000,
                 gasPrice: (0, ethers_1.parseEther)('0.00000002'),
                 value: 0
@@ -341,12 +420,9 @@ let InjectiveService = class InjectiveService {
                         nfcUID: nfcUID,
                         tokenId: tokenId,
                         owner: ownerAddress,
-                        metadataURI: metadataURI,
-                        imageUrl: metadataURI,
                         blockNumber: receipt.blockNumber,
                         gasUsed: receipt.gasUsed.toString(),
-                        timestamp: new Date().toISOString(),
-                        metadata: metadata || null
+                        timestamp: new Date().toISOString()
                     }
                 };
             }
@@ -380,26 +456,21 @@ let InjectiveService = class InjectiveService {
                 let rarity = 'R';
                 let color = 'black';
                 let tokenId = '';
-                console.log(`开始解析交易日志，总共${receipt.logs.length}条日志`);
                 for (const log of receipt.logs) {
                     try {
                         const parsedLog = this.catNFTContract.interface.parseLog(log);
-                        console.log(`解析日志成功: ${parsedLog?.name || 'unknown'}`);
                         if (parsedLog && parsedLog.name === 'CatNFTMinted') {
                             tokenId = parsedLog.args.tokenId.toString();
                             const rarityIndex = parsedLog.args.rarity;
                             color = parsedLog.args.color;
-                            console.log(`找到CatNFTMinted事件: tokenId=${tokenId}, rarity=${rarityIndex}, color=${color}`);
                             const rarityMap = ['R', 'SR', 'SSR', 'UR'];
                             rarity = rarityMap[rarityIndex] || 'R';
                             break;
                         }
                     }
                     catch (e) {
-                        console.log(`日志解析失败:`, e.message);
                     }
                 }
-                console.log(`最终解析结果: tokenId="${tokenId}", rarity="${rarity}", color="${color}"`);
                 return {
                     success: true,
                     txHash: tx.hash,
@@ -430,6 +501,241 @@ let InjectiveService = class InjectiveService {
             };
         }
     }
+    async socialInteraction(myNFC, otherNFC, userPrivateKey) {
+        try {
+            if (!this.catNFTContract) {
+                throw new Error('小猫NFT合约未初始化');
+            }
+            console.log(`开始社交互动: ${myNFC} 与 ${otherNFC}`);
+            const userWallet = new ethers_1.Wallet(userPrivateKey, this.evmProvider);
+            const userCatNFTContract = new ethers_1.Contract(this.configService.get('CAT_NFT_ADDRESS'), CatNFTABI, userWallet);
+            const tx = await userCatNFTContract.socialInteraction(myNFC, otherNFC, {
+                gasLimit: 500000,
+                gasPrice: (0, ethers_1.parseEther)('0.00000002')
+            });
+            console.log(`社交互动交易已发送，交易哈希: ${tx.hash}`);
+            const receipt = await tx.wait();
+            if (receipt.status === 1) {
+                console.log(`社交互动成功: ${myNFC} 与 ${otherNFC}, 交易哈希: ${tx.hash}`);
+                let rewardTickets = 1;
+                let totalTickets = 1;
+                for (const log of receipt.logs) {
+                    try {
+                        const parsedLog = userCatNFTContract.interface.parseLog(log);
+                        if (parsedLog && parsedLog.name === 'SocialInteractionCompleted') {
+                            rewardTickets = parsedLog.args.rewardedDraws?.toNumber() || 1;
+                            totalTickets = parsedLog.args.totalDrawsAvailable?.toNumber() || 1;
+                            break;
+                        }
+                    }
+                    catch (e) {
+                    }
+                }
+                return {
+                    success: true,
+                    txHash: tx.hash,
+                    rewardTickets,
+                    totalTickets
+                };
+            }
+            else {
+                throw new Error('交易失败');
+            }
+        }
+        catch (error) {
+            console.error('社交互动失败:', error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+    async checkUserAuthorization(userAddress) {
+        try {
+            if (!this.catNFTContract) {
+                return false;
+            }
+            const isAuthorized = await this.catNFTContract.authorizedOperators(userAddress);
+            console.log(`用户 ${userAddress} 授权状态: ${isAuthorized}`);
+            return isAuthorized;
+        }
+        catch (error) {
+            console.error('检查用户授权状态失败:', error);
+            return false;
+        }
+    }
+    async authorizeUser(userAddress) {
+        try {
+            if (!this.catNFTContract) {
+                throw new Error('CatNFT合约未初始化');
+            }
+            console.log(`开始手动授权用户: ${userAddress}`);
+            const tx = await this.catNFTContract.setAuthorizedOperator(userAddress, true, {
+                gasLimit: 100000,
+                gasPrice: (0, ethers_1.parseEther)('0.00000002')
+            });
+            console.log(`用户授权交易已发送，交易哈希: ${tx.hash}`);
+            const receipt = await tx.wait();
+            if (receipt.status === 1) {
+                console.log(`用户授权成功: ${userAddress}, 交易哈希: ${tx.hash}`);
+                return {
+                    success: true,
+                    txHash: tx.hash
+                };
+            }
+            else {
+                throw new Error('授权交易失败');
+            }
+        }
+        catch (error) {
+            console.error('用户授权失败:', error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+    async drawCatNFTWithTickets(ownerAddress, nfcUID, catName, userPrivateKey) {
+        try {
+            if (!this.catNFTContract) {
+                throw new Error('小猫NFT合约未初始化');
+            }
+            console.log(`开始使用抽卡券抽取: ${catName} -> ${ownerAddress}, NFC: ${nfcUID}`);
+            const userWallet = new ethers_1.Wallet(userPrivateKey, this.evmProvider);
+            const userCatNFTContract = new ethers_1.Contract(this.configService.get('CAT_NFT_ADDRESS'), CatNFTABI, userWallet);
+            const tx = await userCatNFTContract.drawCatNFTWithTickets(nfcUID, catName, {
+                gasLimit: 700000,
+                gasPrice: (0, ethers_1.parseEther)('0.00000002'),
+                value: (0, ethers_1.parseEther)('0.1')
+            });
+            console.log(`抽卡交易已发送，交易哈希: ${tx.hash}`);
+            const receipt = await tx.wait();
+            if (receipt.status === 1) {
+                console.log(`抽卡成功: ${catName} -> ${ownerAddress}, 交易哈希: ${tx.hash}`);
+                let rarity = 'R';
+                let color = '黑色';
+                let tokenId = '';
+                let drawCount = 0;
+                for (const log of receipt.logs) {
+                    try {
+                        const parsedLog = userCatNFTContract.interface.parseLog(log);
+                        if (parsedLog && parsedLog.name === 'CatDrawnWithTickets') {
+                            tokenId = parsedLog.args.tokenId.toString();
+                            const rarityIndex = parsedLog.args.rarity;
+                            color = parsedLog.args.color;
+                            drawCount = parsedLog.args.remainingTickets?.toNumber() || 0;
+                            const rarityMap = ['R', 'SR', 'SSR', 'UR'];
+                            rarity = rarityMap[rarityIndex] || 'R';
+                            break;
+                        }
+                        else if (parsedLog && parsedLog.name === 'CatNFTMinted') {
+                            tokenId = parsedLog.args.tokenId.toString();
+                            const rarityIndex = parsedLog.args.rarity;
+                            color = parsedLog.args.color;
+                            const rarityMap = ['R', 'SR', 'SSR', 'UR'];
+                            rarity = rarityMap[rarityIndex] || 'R';
+                        }
+                    }
+                    catch (e) {
+                    }
+                }
+                return {
+                    success: true,
+                    txHash: tx.hash,
+                    rarity,
+                    color,
+                    drawCount,
+                    rawTx: {
+                        type: 'CAT_NFT_TICKET_MINT',
+                        name: catName,
+                        tokenId: tokenId,
+                        rarity: rarity,
+                        color: color,
+                        owner: ownerAddress,
+                        nfcUID: nfcUID,
+                        drawCount: drawCount,
+                        blockNumber: receipt.blockNumber,
+                        gasUsed: receipt.gasUsed.toString(),
+                        timestamp: new Date().toISOString()
+                    }
+                };
+            }
+            else {
+                throw new Error('交易失败');
+            }
+        }
+        catch (error) {
+            console.error('使用抽卡券抽卡失败:', error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+    async drawCatNFTTraditional(ownerAddress, catName) {
+        try {
+            return {
+                success: false,
+                error: '传统抽卡功能已被移除，请使用社交抽卡功能'
+            };
+        }
+        catch (error) {
+            console.error('传统抽卡失败:', error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+    async getDrawStats(nfcUID) {
+        try {
+            if (!this.catNFTContract) {
+                throw new Error('小猫NFT合约未初始化');
+            }
+            const stats = await this.catNFTContract.getDrawStats(nfcUID);
+            const socialBonus = await this.catNFTContract.getSocialBonus(nfcUID);
+            return {
+                availableDraws: Number(stats[0]) || 0,
+                usedDraws: Number(stats[1]) || 0,
+                totalDraws: Number(stats[2]) || 0,
+                socialBonus: Number(socialBonus) || 0
+            };
+        }
+        catch (error) {
+            console.error('获取抽卡统计失败:', error);
+            return {
+                availableDraws: 0,
+                usedDraws: 0,
+                totalDraws: 0,
+                socialBonus: 0
+            };
+        }
+    }
+    async getInteractedNFCs(nfcUID) {
+        try {
+            if (!this.catNFTContract) {
+                throw new Error('小猫NFT合约未初始化');
+            }
+            const interactedNFCs = await this.catNFTContract.getInteractedNFCs(nfcUID);
+            return Array.isArray(interactedNFCs) ? interactedNFCs : [];
+        }
+        catch (error) {
+            console.error('获取已互动NFC列表失败:', error);
+            return [];
+        }
+    }
+    async hasInteracted(nfc1, nfc2) {
+        try {
+            if (!this.catNFTContract) {
+                return false;
+            }
+            return await this.catNFTContract.hasInteracted(nfc1, nfc2);
+        }
+        catch (error) {
+            console.error('检查NFC互动状态失败:', error);
+            return false;
+        }
+    }
     async getContractStatus() {
         try {
             return {
@@ -447,87 +753,6 @@ let InjectiveService = class InjectiveService {
                 catNFT: false,
                 networkInfo: null
             };
-        }
-    }
-    async unbindNFCWallet(nfcUID, ownerSignature) {
-        if (!this.nfcRegistryContract) {
-            throw new Error('NFC注册表合约未初始化');
-        }
-        try {
-            console.log(`解绑NFC钱包: ${nfcUID}`);
-            const tx = await this.nfcRegistryContract.unbindNFCWallet(nfcUID, ownerSignature, {
-                gasLimit: 500000,
-                gasPrice: (0, ethers_1.parseEther)('0.00000002'),
-            });
-            console.log(`解绑交易已发送，交易哈希: ${tx.hash}`);
-            const receipt = await tx.wait();
-            if (receipt.status === 1) {
-                console.log(`NFC解绑成功: ${nfcUID}, 交易哈希: ${tx.hash}`);
-                return tx.hash;
-            }
-            else {
-                throw new Error('解绑交易失败');
-            }
-        }
-        catch (error) {
-            console.error('解绑NFC钱包失败:', error);
-            throw new Error(`解绑NFC钱包失败: ${error.message}`);
-        }
-    }
-    async detectAndBindBlankCard(nfcUID, walletAddress) {
-        if (!this.nfcRegistryContract) {
-            throw new Error('NFC注册表合约未初始化');
-        }
-        try {
-            console.log(`开始绑定空白NFC到链上: ${nfcUID} -> ${walletAddress}`);
-            const tx = await this.nfcRegistryContract.detectAndBindBlankCard(nfcUID, walletAddress, {
-                gasLimit: 500000,
-                gasPrice: (0, ethers_1.parseEther)('0.00000002'),
-            });
-            console.log(`NFC绑定交易已发送，交易哈希: ${tx.hash}`);
-            const receipt = await tx.wait();
-            if (receipt.status === 1) {
-                console.log(`NFC绑定成功: ${nfcUID} -> ${walletAddress}, 交易哈希: ${tx.hash}`);
-                return {
-                    success: true,
-                    txHash: tx.hash
-                };
-            }
-            else {
-                throw new Error('绑定交易失败');
-            }
-        }
-        catch (error) {
-            console.error('绑定空白NFC卡片失败:', error);
-            return {
-                success: false,
-                error: error.message
-            };
-        }
-    }
-    async emergencyUnbindNFCWallet(nfcUID) {
-        if (!this.nfcRegistryContract) {
-            throw new Error('NFC注册表合约未初始化');
-        }
-        try {
-            console.log(`紧急解绑NFC钱包: ${nfcUID}`);
-            const tx = await this.nfcRegistryContract.emergencyUnbindNFCWallet(nfcUID, {
-                gasLimit: 500000,
-                gasPrice: (0, ethers_1.parseEther)('0.00000002'),
-            });
-            console.log(`紧急解绑交易已发送，交易哈希: ${tx.hash}`);
-            const receipt = await tx.wait();
-            if (receipt.status === 1) {
-                console.log(`NFC紧急解绑成功: ${nfcUID}, 交易哈希: ${tx.hash}`);
-                return tx.hash;
-            }
-            else {
-                throw new Error('紧急解绑交易失败');
-            }
-        }
-        catch (error) {
-            console.error('紧急解绑NFC钱包失败:', error);
-            throw new Error(`紧急解绑NFC钱包失败: ${error.message}`);
         }
     }
 };

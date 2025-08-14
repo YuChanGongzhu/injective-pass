@@ -41,7 +41,9 @@ contract INJDomainNFTTest is Test {
         user1 = makeAddr("user1");
         user2 = makeAddr("user2");
 
-        domainNFT = new INJDomainNFT();
+        // 部署一个模拟的NFCWalletRegistry合约用于测试
+        address mockNFCRegistry = address(0x1); // 使用简单地址进行测试
+        domainNFT = new INJDomainNFT(mockNFCRegistry);
     }
 
     // ============ 基础功能测试 ============
@@ -51,7 +53,7 @@ contract INJDomainNFTTest is Test {
         assertEq(domainNFT.symbol(), "INJDN");
         assertEq(domainNFT.owner(), owner);
         assertEq(domainNFT.registrationFee(), 0);
-        assertEq(domainNFT.MIN_DOMAIN_LENGTH(), 3);
+        assertEq(domainNFT.MIN_DOMAIN_LENGTH(), 1);
         assertEq(domainNFT.MAX_DOMAIN_LENGTH(), 30);
     }
 
@@ -59,7 +61,7 @@ contract INJDomainNFTTest is Test {
         vm.startPrank(user1);
 
         vm.expectEmit(true, true, true, true);
-        emit DomainNFTMinted(1, "alice.inj", user1, block.timestamp);
+        emit DomainNFTMinted(1, "advx-alice.inj", user1, block.timestamp);
 
         // 铸造域名NFT
         domainNFT.mintDomainNFT{value: 0}(DOMAIN_PREFIX, NFC_UID, METADATA_URI);
@@ -68,14 +70,21 @@ contract INJDomainNFTTest is Test {
         assertEq(domainNFT.ownerOf(1), user1);
 
         // 验证域名信息
-        INJDomainNFT.DomainInfo memory domainInfo = domainNFT.domainInfos(1);
-        assertEq(domainInfo.domainName, "alice.inj");
-        assertEq(domainInfo.owner, user1);
-        assertEq(domainInfo.nfcUID, NFC_UID);
-        assertTrue(domainInfo.isActive);
+        (
+            string memory domainName,
+            address domainOwner,
+            string memory nfcUID,
+            uint256 registeredAt,
+            bool isActive,
+            string memory metadata
+        ) = domainNFT.domainInfos(1);
+        assertEq(domainName, "advx-alice.inj");
+        assertEq(domainOwner, user1);
+        assertEq(nfcUID, NFC_UID);
+        assertTrue(isActive);
 
         // 验证映射关系
-        assertEq(domainNFT.domainToTokenId("alice.inj"), 1);
+        assertEq(domainNFT.domainToTokenId("advx-alice.inj"), 1);
         assertEq(domainNFT.nfcToTokenId(NFC_UID), 1);
 
         // 验证主域名设置
@@ -87,9 +96,9 @@ contract INJDomainNFTTest is Test {
     function testMintDomainNFTInvalidInput() public {
         vm.startPrank(user1);
 
-        // 测试过短的域名
-        vm.expectRevert("Invalid domain prefix");
-        domainNFT.mintDomainNFT{value: 0}("ab", NFC_UID, METADATA_URI);
+        // 测试过短的域名（现在最小长度是1，所以测试空字符串）
+        vm.expectRevert("Invalid domain suffix");
+        domainNFT.mintDomainNFT{value: 0}("", NFC_UID, METADATA_URI);
 
         // 测试空NFC UID
         vm.expectRevert("Invalid NFC UID");
@@ -133,7 +142,7 @@ contract INJDomainNFTTest is Test {
 
         vm.startPrank(user1);
         vm.expectEmit(true, true, true, true);
-        emit DomainNFTTransferred(1, "alice.inj", user1, user2);
+        emit DomainNFTTransferred(1, "advx-alice.inj", user1, user2);
 
         domainNFT.unbindAndTransferDomain(NFC_UID, user2);
         vm.stopPrank();
@@ -141,7 +150,10 @@ contract INJDomainNFTTest is Test {
         // 验证转移后状态
         assertEq(domainNFT.ownerOf(1), user2);
         assertEq(domainNFT.nfcToTokenId(NFC_UID), 0); // NFC解绑
-        assertFalse(domainNFT.domainInfos(1).isActive); // 域名变为非激活状态
+
+        // 验证域名变为非激活状态
+        (, , , , bool isActive, ) = domainNFT.domainInfos(1);
+        assertFalse(isActive); // 域名变为非激活状态
     }
 
     function testUnbindAndTransferDomainUnauthorized() public {
@@ -167,7 +179,7 @@ contract INJDomainNFTTest is Test {
         );
 
         vm.expectEmit(true, true, true, true);
-        emit PrimaryDomainSet(user1, 2, "bob.inj");
+        emit PrimaryDomainSet(user1, 2, "advx-bob.inj");
 
         domainNFT.setPrimaryDomain(2);
 
@@ -194,12 +206,12 @@ contract INJDomainNFTTest is Test {
         vm.stopPrank();
 
         // 测试域名解析
-        address resolved = domainNFT.resolveDomain("alice.inj");
+        address resolved = domainNFT.resolveDomain("advx-alice.inj");
         assertEq(resolved, user1);
 
-        // 测试用户域名
-        string memory userDomain = domainNFT.getUserDomain(user1);
-        assertEq(userDomain, "alice.inj");
+        // 测试用户域名（使用reverseResolve）
+        string memory userDomain = domainNFT.reverseResolve(user1);
+        assertEq(userDomain, "advx-alice.inj");
     }
 
     function testQueryNonExistentDomain() public view {

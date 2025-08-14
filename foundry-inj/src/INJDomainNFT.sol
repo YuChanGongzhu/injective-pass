@@ -6,11 +6,13 @@ import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "./interfaces/INFCWalletRegistry.sol";
 
 /**
  * @title INJDomainNFT
  * @dev .inj域名NFT系统智能合约
  * 将域名作为NFT进行铸造、转移和管理
+ * 增强版权限控制，与NFCWalletRegistry集成
  */
 contract INJDomainNFT is ERC721, ERC721URIStorage, Ownable, ReentrancyGuard {
     using Strings for uint256;
@@ -34,8 +36,14 @@ contract INJDomainNFT is ERC721, ERC721URIStorage, Ownable, ReentrancyGuard {
     mapping(address => uint256) public primaryDomainTokenId; // 地址 -> 主域名tokenId
 
     uint256 public registrationFee = 0; // 注册费用 (免费注册)
-    uint256 public constant MIN_DOMAIN_LENGTH = 3; // 最小域名长度
+    uint256 public constant MIN_DOMAIN_LENGTH = 1; // 最小域名长度
     uint256 public constant MAX_DOMAIN_LENGTH = 30; // 最大域名长度
+
+    // NFC注册表合约地址
+    INFCWalletRegistry public nfcRegistry;
+
+    // 授权操作者映射
+    mapping(address => bool) public authorizedOperators;
 
     // 事件
     event DomainNFTMinted(
@@ -64,7 +72,22 @@ contract INJDomainNFT is ERC721, ERC721URIStorage, Ownable, ReentrancyGuard {
         string metadata
     );
 
-    constructor() ERC721("INJ Domain NFT", "INJDN") Ownable(msg.sender) {}
+    event NFCRegistryUpdated(
+        address indexed oldRegistry,
+        address indexed newRegistry
+    );
+
+    event OperatorAuthorized(address indexed operator, bool authorized);
+
+    constructor(
+        address _nfcRegistry
+    ) ERC721("INJ Domain NFT", "INJDN") Ownable(msg.sender) {
+        require(_nfcRegistry != address(0), "Invalid NFC registry address");
+        nfcRegistry = INFCWalletRegistry(_nfcRegistry);
+
+        // 授权部署者为操作者
+        authorizedOperators[msg.sender] = true;
+    }
 
     /**
      * @dev 铸造域名NFT (与NFC绑定，自动添加advx-前缀)
@@ -76,11 +99,19 @@ contract INJDomainNFT is ERC721, ERC721URIStorage, Ownable, ReentrancyGuard {
         string memory domainSuffix,
         string memory nfcUID,
         string memory metadataURI
-    ) external payable nonReentrant {
+    ) external payable nonReentrant onlyAuthorizedOperator {
         require(msg.value >= registrationFee, "Insufficient registration fee");
         require(_isValidDomainSuffix(domainSuffix), "Invalid domain suffix");
         require(bytes(nfcUID).length > 0, "Invalid NFC UID");
         require(!_nfcBound(nfcUID), "NFC already bound to domain");
+
+        // 验证NFC在注册表中
+        require(nfcRegistry.isNFCBound(nfcUID), "NFC not registered");
+
+        // 验证调用者拥有该NFC
+        INFCWalletRegistry.NFCBinding memory binding = nfcRegistry
+            .getNFCBinding(nfcUID);
+        require(msg.sender == binding.walletAddress, "You don't own this NFC");
 
         // 自动添加 advx- 前缀
         string memory domainPrefix = string(
@@ -135,7 +166,7 @@ contract INJDomainNFT is ERC721, ERC721URIStorage, Ownable, ReentrancyGuard {
     function unbindAndTransferDomain(
         string memory nfcUID,
         address newOwner
-    ) external nonReentrant {
+    ) external nonReentrant onlyAuthorizedOperator {
         require(newOwner != address(0), "Invalid new owner address");
 
         uint256 tokenId = nfcToTokenId[nfcUID];
@@ -324,7 +355,8 @@ contract INJDomainNFT is ERC721, ERC721URIStorage, Ownable, ReentrancyGuard {
 
         // 检查长度（考虑到会添加 "advx-" 前缀，所以后缀长度要求相应调整）
         // advx- = 5个字符，所以总长度范围是 5 + suffix_length
-        if (length < 1 || length > MAX_DOMAIN_LENGTH - 5) {
+        // 设置后缀最小长度为 1，以确保总长度符合域名规范
+        if (length < MIN_DOMAIN_LENGTH || length > MAX_DOMAIN_LENGTH - 5) {
             return false;
         }
 
@@ -476,6 +508,70 @@ contract INJDomainNFT is ERC721, ERC721URIStorage, Ownable, ReentrancyGuard {
     // 管理员函数
 
     /**
+     * @dev 自动授权新注册的NFC用户（由NFCRegistry调用）
+     * @param nfcUID NFC UID
+     * @param userWallet 用户钱包地址
+     */
+    function authorizeNewNFCUser(
+        string memory nfcUID,
+        address userWallet
+    ) external {
+        require(
+            msg.sender == address(nfcRegistry),
+            "Only NFC registry can call"
+        );
+        require(userWallet != address(0), "Invalid wallet address");
+        require(bytes(nfcUID).length > 0, "Invalid NFC UID");
+
+        // 验证NFC确实已绑定
+        require(nfcRegistry.isNFCBound(nfcUID), "NFC not bound");
+
+        // 自动授权用户为操作者
+        authorizedOperators[userWallet] = true;
+
+        emit OperatorAuthorized(userWallet, true);
+    }
+
+    /**
+     * @dev 更新NFC注册表地址
+     */
+    function setNFCRegistry(address _nfcRegistry) external onlyOwner {
+        require(_nfcRegistry != address(0), "Invalid address");
+        address oldRegistry = address(nfcRegistry);
+        nfcRegistry = INFCWalletRegistry(_nfcRegistry);
+        emit NFCRegistryUpdated(oldRegistry, _nfcRegistry);
+    }
+
+    /**
+     * @dev 授权操作者
+     */
+    function setAuthorizedOperator(
+        address operator,
+        bool authorized
+    ) external onlyOwner {
+        authorizedOperators[operator] = authorized;
+        emit OperatorAuthorized(operator, authorized);
+    }
+
+    /**
+     * @dev 批量授权操作者
+     */
+    function batchSetAuthorizedOperators(
+        address[] memory operators,
+        bool[] memory authorizations
+    ) external onlyOwner {
+        require(
+            operators.length == authorizations.length,
+            "Array length mismatch"
+        );
+
+        for (uint256 i = 0; i < operators.length; i++) {
+            authorizedOperators[operators[i]] = authorizations[i];
+            emit OperatorAuthorized(operators[i], authorizations[i]);
+        }
+    }
+
+    /**
      * @dev 设置注册费用
      */
     function setRegistrationFee(uint256 newFee) external onlyOwner {
@@ -503,5 +599,18 @@ contract INJDomainNFT is ERC721, ERC721URIStorage, Ownable, ReentrancyGuard {
     function unfreezeDomain(uint256 tokenId) external onlyOwner {
         require(_ownerOf(tokenId) != address(0), "Token does not exist");
         domainInfos[tokenId].isActive = true;
+    }
+
+    // 修饰符
+
+    /**
+     * @dev 仅授权操作者可调用
+     */
+    modifier onlyAuthorizedOperator() {
+        require(
+            authorizedOperators[msg.sender] || msg.sender == owner(),
+            "Not authorized operator"
+        );
+        _;
     }
 }

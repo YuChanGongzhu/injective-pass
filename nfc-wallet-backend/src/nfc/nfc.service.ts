@@ -12,7 +12,7 @@ import { TransactionService } from '../contract/transaction.service';
 import { RegisterNFCDto, BindNFCDto } from './dto/register-nfc.dto';
 import { WalletResponseDto, TransactionResponseDto } from './dto/wallet-response.dto';
 import { RegisterDomainDto, DomainNFTResponseDto, DomainAvailabilityDto } from './dto/domain-nft.dto';
-import { DrawCatNFTDto, CatNFTResponseDto, CatNFTListDto } from './dto/cat-nft.dto';
+import { DrawCatNFTDto, CatNFTResponseDto, CatNFTListDto, SocialStatsDto, SocialInteractionDto, SocialInteractionResponseDto, DrawCatWithTicketsDto, DrawCatTraditionalDto, DrawStatsDto } from './dto/cat-nft.dto';
 // 临时枚举定义，直到Prisma客户端完全生成
 enum TransactionType {
     SEND = 'SEND',
@@ -45,6 +45,39 @@ export class NFCService {
     ) { }
 
     /**
+     * 解密用户私钥的工具函数
+     */
+    private async decryptUserPrivateKey(encryptedPrivateKey: string): Promise<string> {
+        try {
+            return this.cryptoService.decrypt(encryptedPrivateKey);
+        } catch (error) {
+            this.logger.error('私钥解密失败:', error.message);
+            throw new BadRequestException('用户私钥解密失败');
+        }
+    }
+
+    /**
+     * 自动绑定NFC到合约的辅助函数
+     */
+    private async bindNFCToContract(user: any, uid: string): Promise<void> {
+        try {
+            // 调用合约绑定函数，传递用户的以太坊地址
+            const bindResult = await this.injectiveService.detectAndBindBlankCard(
+                uid,
+                user.ethAddress // 传递用户的以太坊地址，而不是私钥
+            );
+
+            if (bindResult.success) {
+                this.logger.log(`NFC卡片已自动绑定到合约: ${uid} -> ${user.address}`);
+            } else {
+                this.logger.error(`NFC自动绑定失败: ${bindResult.error}`);
+            }
+        } catch (error) {
+            this.logger.error(`NFC自动绑定过程中出现错误:`, error.message);
+        }
+    }
+
+    /**
      * 注册NFC卡片并创建或绑定到用户钱包（一一对应关系）
      */
     async registerNFC(registerNFCDto: RegisterNFCDto): Promise<WalletResponseDto> {
@@ -67,7 +100,6 @@ export class NFCService {
         }
 
         let user;
-        let initialFundTxHash: string | undefined;
 
         if (userAddress) {
             // 绑定到现有用户
@@ -101,14 +133,21 @@ export class NFCService {
 
             this.logger.log(`新建用户钱包: ${user.address} for UID: ${uid}`);
 
-            // 同步发送初始资金并等待完成
-            let initialFundTxHash: string | undefined;
+            // 同步发送初始资金，确保用户注册完成时就有资金
             try {
-                const fundingResult = await this.initializeNewUser(user.id, user.address);
-                initialFundTxHash = fundingResult?.txHash;
+                await this.initializeNewUser(user.id, user.address);
+                this.logger.log(`用户初始化完成: ${user.address}`);
             } catch (error) {
                 this.logger.error(`初始化用户失败 ${user.address}:`, error.message);
+                // 不阻止注册流程，但记录错误
             }
+        }
+
+        // 验证和截断昵称长度
+        let validNickname = nickname;
+        if (validNickname && validNickname.length > 100) {
+            validNickname = validNickname.substring(0, 100);
+            this.logger.warn(`昵称过长已截断: ${nickname.length} -> 100 字符`);
         }
 
         // 创建NFC卡片记录（一一对应）
@@ -116,31 +155,24 @@ export class NFCService {
             data: {
                 uid,
                 userId: user.id,
-                nickname,
+                nickname: validNickname,
                 isActive: true,
                 isBlank: true, // 初始为空白卡片
             },
             include: { user: true }
         });
 
-        // 将NFC绑定到链上（如果是新用户）
-        if (!userAddress) {
-            try {
-                this.logger.log(`开始链上绑定NFC: ${uid} -> ${user.address}`);
-                const bindResult = await this.injectiveService.detectAndBindBlankCard(uid, user.address);
-                if (bindResult.success) {
-                    this.logger.log(`链上绑定成功: ${uid}, 交易哈希: ${bindResult.txHash}`);
-                } else {
-                    this.logger.warn(`链上绑定失败: ${uid}, 错误: ${bindResult.error}`);
-                }
-            } catch (error) {
-                this.logger.warn(`链上绑定NFC失败: ${uid}, 错误: ${error.message}`);
-            }
-        }
-
         this.logger.log(`NFC卡片注册成功: ${uid} -> ${user.address}`);
 
-        return this.buildWalletResponse(user, nfcCard, true, initialFundTxHash);
+        // 同步绑定NFC到合约，确保绑定成功
+        try {
+            await this.bindNFCToContract(user, uid);
+        } catch (error) {
+            this.logger.error(`自动绑定NFC到合约失败 ${uid}:`, error.message);
+            // 不抛出错误，允许用户继续使用，但记录失败
+        }
+
+        return this.buildWalletResponse(user, nfcCard, true);
     }
 
     /**
@@ -222,15 +254,57 @@ export class NFCService {
     }
 
     /**
+     * 手动绑定NFC到合约（修复绑定失败的情况）
+     */
+    async manualBindNFCToContract(uid: string): Promise<{ success: boolean; message: string; transactionHash?: string }> {
+        if (!this.validateUID(uid)) {
+            throw new BadRequestException('NFC UID格式无效');
+        }
+
+        // 查找NFC对应的用户
+        const nfcCard = await this.prisma.nFCCard.findUnique({
+            where: { uid },
+            include: { user: true }
+        });
+
+        if (!nfcCard) {
+            throw new NotFoundException('NFC卡片不存在，请先注册');
+        }
+
+        try {
+            // 调用合约绑定函数
+            const bindResult = await this.injectiveService.detectAndBindBlankCard(
+                uid,
+                nfcCard.user.ethAddress
+            );
+
+            if (bindResult.success) {
+                this.logger.log(`手动绑定NFC到合约成功: ${uid} -> ${nfcCard.user.address}`);
+                return {
+                    success: true,
+                    message: 'NFC成功绑定到合约',
+                    transactionHash: bindResult.txHash
+                };
+            } else {
+                throw new Error(bindResult.error || '绑定失败');
+            }
+        } catch (error) {
+            this.logger.error(`手动绑定NFC到合约失败 ${uid}:`, error.message);
+            throw new BadRequestException(`绑定失败: ${error.message}`);
+        }
+    }
+
+    /**
      * 注册域名NFT（需要初始资金且与NFC绑定）
      */
     async registerDomainNFT(registerDomainDto: RegisterDomainDto): Promise<DomainNFTResponseDto> {
         const { uid, domainPrefix } = registerDomainDto;
 
         if (!this.validateUID(uid)) { throw new BadRequestException('NFC UID格式无效'); }
-        if (!this.validateDomainPrefix(domainPrefix)) { throw new BadRequestException('域名前缀格式无效'); }
+        if (!this.validateDomainSuffix(domainPrefix)) { throw new BadRequestException('域名后缀格式无效'); }
 
-        const fullDomain = `${domainPrefix}.inj`;
+        // 生成完整域名：advx-{suffix}.inj (与合约逻辑一致)
+        const fullDomain = `advx-${domainPrefix}.inj`;
         const existingDomain = await this.prisma.user.findUnique({ where: { domain: fullDomain } });
         if (existingDomain) { throw new ConflictException('域名已被占用'); }
 
@@ -245,17 +319,15 @@ export class NFCService {
         try {
             const domainTokenId = `domain_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-            // 生成域名NFT的元数据
-            const registeredAt = new Date();
-            const domainMetadata = this.generateDomainMetadata(fullDomain, registeredAt);
-            const imageUrl = this.generateDomainImageUrl(fullDomain);
+            // 解密用户私钥
+            const userPrivateKey = await this.decryptUserPrivateKey(nfcCard.user.privateKeyEnc);
 
             const mintResult = await this.injectiveService.mintDomainNFT(
                 nfcCard.user.address,
                 fullDomain,
                 uid, // Pass NFC UID to mintDomainNFT
                 domainTokenId,
-                domainMetadata // 传入元数据
+                userPrivateKey // 使用用户私钥进行身份验证
             );
 
             if (!mintResult.success) { throw new Error(`域名NFT铸造失败: ${mintResult.error}`); }
@@ -282,13 +354,7 @@ export class NFCService {
             });
 
             this.logger.log(`域名NFT注册成功: ${fullDomain} for UID: ${uid}`);
-            return {
-                domain: fullDomain,
-                tokenId: domainTokenId,
-                txHash: mintResult.txHash,
-                registeredAt: new Date(),
-                imageUrl: imageUrl
-            };
+            return { domain: fullDomain, tokenId: domainTokenId, txHash: mintResult.txHash, registeredAt: new Date() };
         } catch (error) {
             this.logger.error(`域名NFT注册失败:`, error.message);
             throw new BadRequestException(`域名NFT注册失败: ${error.message}`);
@@ -298,12 +364,13 @@ export class NFCService {
     /**
      * 检查域名可用性
      */
-    async checkDomainAvailability(domainPrefix: string): Promise<DomainAvailabilityDto> {
-        if (!this.validateDomainPrefix(domainPrefix)) {
-            throw new BadRequestException('域名前缀格式无效');
+    async checkDomainAvailability(domainSuffix: string): Promise<DomainAvailabilityDto> {
+        if (!this.validateDomainSuffix(domainSuffix)) {
+            throw new BadRequestException('域名后缀格式无效');
         }
 
-        const fullDomain = `${domainPrefix}.inj`;
+        // 生成完整域名：advx-{suffix}.inj (与合约逻辑一致)
+        const fullDomain = `advx-${domainSuffix}.inj`;
         const existingUser = await this.prisma.user.findUnique({
             where: { domain: fullDomain }
         });
@@ -386,7 +453,7 @@ export class NFCService {
     /**
      * 解绑NFC卡片
      */
-    async unbindNFC(uid: string): Promise<{ success: boolean; message: string; txHash?: string; error?: string }> {
+    async unbindNFC(uid: string): Promise<{ success: boolean; message: string }> {
         if (!this.validateUID(uid)) {
             throw new BadRequestException('NFC UID格式无效');
         }
@@ -405,40 +472,38 @@ export class NFCService {
             throw new BadRequestException('用户已拥有域名，无法解绑NFC卡片');
         }
 
-        try {
-            // 调用链交互：紧急解绑（简化版本，实际可能需要用户签名）
-            this.logger.log(`开始链上解绑NFC: ${uid}`);
-            const txHash = await this.injectiveService.emergencyUnbindNFCWallet(uid);
+        // 删除NFC卡片记录
+        await this.prisma.nFCCard.delete({
+            where: { uid }
+        });
 
-            // 删除本地数据库记录
-            await this.prisma.nFCCard.delete({
-                where: { uid }
-            });
+        this.logger.log(`NFC卡片解绑成功: ${uid}`);
 
-            this.logger.log(`NFC卡片解绑成功: ${uid}, 交易哈希: ${txHash}`);
-
-            return {
-                success: true,
-                message: 'NFC卡片解绑成功',
-                txHash: txHash
-            };
-        } catch (error) {
-            this.logger.error(`NFC卡片解绑失败: ${uid}`, error.message);
-            return {
-                success: false,
-                message: 'NFC卡片解绑失败',
-                error: error.message
-            };
-        }
+        return {
+            success: true,
+            message: 'NFC卡片解绑成功'
+        };
     }
 
     /**
      * 初始化新用户（发送初始资金）
      */
-    private async initializeNewUser(userId: number, address: string): Promise<{ success: boolean; txHash?: string }> {
+    private async initializeNewUser(userId: number, address: string): Promise<void> {
         try {
             const amount = '0.1'; // 0.1 INJ
-            const result = await this.injectiveService.sendInjectiveTokens(address, amount);
+
+            // 获取用户信息
+            const user = await this.prisma.user.findUnique({
+                where: { id: userId }
+            });
+
+            if (!user) {
+                throw new Error('用户不存在');
+            }
+
+            // 发送到 Injective 地址（inj），银行模块要求 bech32 地址
+            console.log(`发送初始资金到 Injective 地址: ${user.address}`);
+            const result = await this.injectiveService.sendInjectiveTokens(user.address, amount);
 
             if (result.success) {
                 await this.prisma.user.update({
@@ -458,15 +523,12 @@ export class NFCService {
                     rawTx: result.rawTx
                 });
 
-                this.logger.log(`初始资金发送成功: ${address} -> ${amount} INJ, txHash: ${result.txHash}`);
-                return { success: true, txHash: result.txHash };
+                this.logger.log(`初始资金发送成功: ${address} -> ${amount} INJ`);
             } else {
                 this.logger.error(`初始资金发送失败: ${result.error}`);
-                return { success: false };
             }
         } catch (error) {
             this.logger.error(`初始化用户失败: ${error.message}`);
-            return { success: false };
         }
     }
 
@@ -476,8 +538,7 @@ export class NFCService {
     private buildWalletResponse(
         user: any,
         nfcCard: any,
-        isNewWallet: boolean,
-        initialFundTxHash?: string
+        isNewWallet: boolean
     ): WalletResponseDto {
         const recentTransactions = user.transactions?.map((tx: any) => ({
             txHash: tx.txHash,
@@ -502,8 +563,7 @@ export class NFCService {
                 isBlank: nfcCard.isBlank
             } : null,
             recentTransactions,
-            isNewWallet,
-            initialFundTxHash
+            isNewWallet
         };
     }
 
@@ -543,29 +603,131 @@ export class NFCService {
     }
 
     /**
-     * 验证域名前缀格式
+     * 验证域名后缀格式 (与合约_isValidDomainSuffix逻辑一致)
      */
-    private validateDomainPrefix(domainPrefix: string): boolean {
+    private validateDomainSuffix(domainSuffix: string): boolean {
+        if (!domainSuffix || typeof domainSuffix !== 'string') {
+            return false;
+        }
+
+        // 长度检查：1-25字符 (合约MAX_DOMAIN_LENGTH=30，减去advx-的5字符)
+        if (domainSuffix.length < 1 || domainSuffix.length > 25) {
+            return false;
+        }
+
+        // 字符检查：只允许小写字母、数字、连字符
         const regex = /^[a-z0-9]+([a-z0-9-]*[a-z0-9])?$/;
-        return domainPrefix.length >= 3 &&
-            domainPrefix.length <= 30 &&
-            regex.test(domainPrefix) &&
-            !domainPrefix.includes('--');
+        if (!regex.test(domainSuffix)) {
+            return false;
+        }
+
+        // 不能有连续连字符
+        if (domainSuffix.includes('--')) {
+            return false;
+        }
+
+        return true;
     }
 
     /**
-     * 传统抽卡获得小猫NFT（简化版）
+     * 验证域名前缀格式 (保留旧方法以兼容现有代码)
+     * @deprecated 使用 validateDomainSuffix 代替
      */
-    async drawCatNFT(drawCatNFTDto: DrawCatNFTDto): Promise<CatNFTResponseDto> {
-        const { nfcUID, catName } = drawCatNFTDto;
+    private validateDomainPrefix(domainPrefix: string): boolean {
+        return this.validateDomainSuffix(domainPrefix);
+    }
 
-        if (!this.validateUID(nfcUID)) {
+
+
+    /**
+     * 社交互动获取抽卡次数
+     */
+    async socialInteraction(socialInteractionDto: SocialInteractionDto): Promise<SocialInteractionResponseDto> {
+        const { myNFC, otherNFC } = socialInteractionDto;
+
+        if (!this.validateUID(myNFC)) {
+            throw new BadRequestException('自己的NFC UID格式无效');
+        }
+        if (!this.validateUID(otherNFC)) {
+            throw new BadRequestException('其他NFC UID格式无效');
+        }
+        if (myNFC === otherNFC) {
+            throw new BadRequestException('不能与自己的NFC卡片互动');
+        }
+
+        // 查找自己的NFC卡片和用户
+        const myNfcCard = await this.prisma.nFCCard.findUnique({
+            where: { uid: myNFC },
+            include: { user: true }
+        });
+
+        if (!myNfcCard) {
+            throw new NotFoundException('未找到自己的NFC卡片');
+        }
+
+        // 查找其他用户的NFC卡片
+        const otherNfcCard = await this.prisma.nFCCard.findUnique({
+            where: { uid: otherNFC },
+            include: { user: true }
+        });
+
+        if (!otherNfcCard) {
+            throw new NotFoundException('未找到其他用户的NFC卡片');
+        }
+
+        try {
+            // 解密用户私钥
+            const userPrivateKey = await this.decryptUserPrivateKey(myNfcCard.user.privateKeyEnc);
+
+            // 检查用户授权状态
+            const isAuthorized = await this.injectiveService.checkUserAuthorization(myNfcCard.user.ethAddress);
+            if (!isAuthorized) {
+                this.logger.warn(`用户 ${myNfcCard.user.ethAddress} 未获得授权，尝试手动授权`);
+                const authResult = await this.injectiveService.authorizeUser(myNfcCard.user.ethAddress);
+                if (!authResult.success) {
+                    throw new Error(`用户授权失败: ${authResult.error}`);
+                }
+                this.logger.log(`用户 ${myNfcCard.user.ethAddress} 授权成功`);
+            }
+
+            // 调用合约进行社交互动
+            const interactionResult = await this.injectiveService.socialInteraction(
+                myNFC,
+                otherNFC,
+                userPrivateKey // 使用用户私钥进行身份验证
+            );
+
+            if (!interactionResult.success) {
+                throw new Error(`社交互动失败: ${interactionResult.error}`);
+            }
+
+            this.logger.log(`社交互动成功: ${myNFC} 与 ${otherNFC} 互动，获得抽卡券`);
+
+            return {
+                transactionHash: interactionResult.txHash,
+                rewardTickets: interactionResult.rewardTickets || 1,
+                totalTickets: interactionResult.totalTickets || 1,
+                message: '社交互动成功，获得1张抽卡券'
+            };
+        } catch (error) {
+            this.logger.error(`社交互动失败:`, error.message);
+            throw new BadRequestException(`社交互动失败: ${error.message}`);
+        }
+    }
+
+    /**
+     * 使用抽卡券抽取猫咪NFT
+     */
+    async drawCatWithTickets(drawCatWithTicketsDto: DrawCatWithTicketsDto): Promise<CatNFTResponseDto> {
+        const { nfcUid, catName } = drawCatWithTicketsDto;
+
+        if (!this.validateUID(nfcUid)) {
             throw new BadRequestException('NFC UID格式无效');
         }
 
         // 查找NFC卡片和用户
         const nfcCard = await this.prisma.nFCCard.findUnique({
-            where: { uid: nfcUID },
+            where: { uid: nfcUid },
             include: { user: true }
         });
 
@@ -577,23 +739,16 @@ export class NFCService {
             throw new BadRequestException('用户尚未获得初始资金，无法抽卡');
         }
 
-        // 检查用户是否已有同名小猫
-        const existingCat = await this.prisma.catNFT.findFirst({
-            where: {
-                userId: nfcCard.user.id,
-                name: catName
-            }
-        });
-
-        if (existingCat) {
-            throw new ConflictException('小猫名称已被使用');
-        }
-
         try {
-            // 调用合约进行传统抽卡
-            const mintResult = await this.injectiveService.mintCatNFT(
+            // 解密用户私钥
+            const userPrivateKey = await this.decryptUserPrivateKey(nfcCard.user.privateKeyEnc);
+
+            // 调用合约使用抽卡券抽卡
+            const mintResult = await this.injectiveService.drawCatNFTWithTickets(
                 nfcCard.user.address,
-                catName
+                nfcUid,
+                catName,
+                userPrivateKey // 使用用户私钥进行身份验证
             );
 
             if (!mintResult.success) {
@@ -603,70 +758,134 @@ export class NFCService {
             // 根据颜色生成图片URL
             const imageUrl = this.generateCatImageUrl(mintResult.color);
 
-            // 优先使用合约返回的tokenId，否则使用交易哈希
-            const contractTokenId = mintResult.rawTx?.tokenId;
-            let finalTokenId: string;
-
-            if (contractTokenId && contractTokenId.trim() !== '' && contractTokenId !== '0') {
-                // 使用合约返回的真实tokenId
-                finalTokenId = contractTokenId;
-                this.logger.log(`使用合约tokenId: "${finalTokenId}"`);
-            } else {
-                // 使用交易哈希作为备用ID（截取前16位确保唯一性）
-                finalTokenId = `tx_${mintResult.txHash.slice(2, 18)}`;
-                this.logger.log(`合约tokenId无效("${contractTokenId}")，使用交易哈希: "${finalTokenId}"`);
-            }
-
+            // 保存到数据库（处理可能的tokenId唯一性冲突）
+            let tokenIdToSave = mintResult.rawTx?.tokenId || `cat_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+            let catNFT;
             try {
-                // 保存到数据库
-                const catNFT = await this.prisma.catNFT.create({
+                catNFT = await this.prisma.catNFT.create({
                     data: {
-                        tokenId: finalTokenId,
+                        tokenId: tokenIdToSave,
                         userId: nfcCard.user.id,
                         name: catName,
-                        rarity: mintResult.rarity as any, // 转换为Prisma枚举
+                        rarity: mintResult.rarity as any,
                         color: mintResult.color,
                         imageUrl: imageUrl,
                         metadata: {
                             rarity: mintResult.rarity,
                             color: mintResult.color,
-                            description: `A ${mintResult.color} cat with ${mintResult.rarity} rarity`
+                            description: `A ${mintResult.color} cat with ${mintResult.rarity} rarity`,
+                            drawMethod: 'tickets',
+                            drawCount: mintResult.drawCount || 0
                         }
                     }
                 });
-
-                // 记录交易
-                await this.transactionService.createTransaction({
-                    txHash: mintResult.txHash,
-                    userId: nfcCard.user.id,
-                    type: TransactionType.CAT_NFT_MINT,
-                    amount: '0.1', // 抽卡费用
-                    tokenSymbol: 'INJ',
-                    fromAddress: nfcCard.user.address,
-                    toAddress: nfcCard.user.address,
-                    memo: `抽卡: ${catName}`,
-                    rawTx: mintResult.rawTx
-                });
-
-                this.logger.log(`抽卡成功: ${catName} -> ${nfcCard.user.address}, Rarity: ${mintResult.rarity}, Color: ${mintResult.color}`);
-
-                return {
-                    tokenId: catNFT.tokenId,
-                    name: catNFT.name,
-                    rarity: catNFT.rarity,
-                    color: catNFT.color,
-                    imageUrl: catNFT.imageUrl,
-                    metadata: catNFT.metadata as Record<string, any>,
-                    txHash: mintResult.txHash,
-                    mintedAt: catNFT.mintedAt
-                };
-            } catch (dbError) {
-                this.logger.error(`保存小猫NFT到数据库失败:`, dbError.message);
-                throw new BadRequestException(`抽卡失败: ${dbError.message}`);
+            } catch (e: any) {
+                if (e?.code === 'P2002') {
+                    // 发生唯一约束冲突，追加唯一后缀再保存
+                    tokenIdToSave = `${tokenIdToSave}_${Date.now()}`;
+                    catNFT = await this.prisma.catNFT.create({
+                        data: {
+                            tokenId: tokenIdToSave,
+                            userId: nfcCard.user.id,
+                            name: catName,
+                            rarity: mintResult.rarity as any,
+                            color: mintResult.color,
+                            imageUrl: imageUrl,
+                            metadata: {
+                                rarity: mintResult.rarity,
+                                color: mintResult.color,
+                                description: `A ${mintResult.color} cat with ${mintResult.rarity} rarity`,
+                                drawMethod: 'tickets',
+                                drawCount: mintResult.drawCount || 0
+                            }
+                        }
+                    });
+                } else {
+                    throw e;
+                }
             }
+
+            // 记录交易
+            await this.transactionService.createTransaction({
+                txHash: mintResult.txHash,
+                userId: nfcCard.user.id,
+                type: TransactionType.CAT_NFT_MINT,
+                amount: '0.1', // 手续费
+                tokenSymbol: 'INJ',
+                fromAddress: nfcCard.user.address,
+                toAddress: nfcCard.user.address,
+                memo: `使用抽卡券抽卡: ${catName}`,
+                rawTx: mintResult.rawTx
+            });
+
+            this.logger.log(`使用抽卡券抽卡成功: ${catName} -> ${nfcCard.user.address}, Rarity: ${mintResult.rarity}, Color: ${mintResult.color}`);
+
+            return {
+                tokenId: catNFT.tokenId,
+                name: catNFT.name,
+                rarity: catNFT.rarity,
+                color: catNFT.color,
+                imageUrl: catNFT.imageUrl,
+                metadata: catNFT.metadata as Record<string, any>,
+                txHash: mintResult.txHash,
+                mintedAt: catNFT.mintedAt
+            };
         } catch (error) {
-            this.logger.error(`抽卡失败:`, error.message);
+            this.logger.error(`使用抽卡券抽卡失败:`, error.message);
             throw new BadRequestException(`抽卡失败: ${error.message}`);
+        }
+    }
+
+    /**
+     * 传统付费抽卡 (已禁用 - 合约功能已移除)
+     */
+    async drawCatTraditional(drawCatTraditionalDto: DrawCatTraditionalDto): Promise<CatNFTResponseDto> {
+        // 此功能已禁用，因为合约中的 drawCatNFTTraditional 函数已被移除
+        throw new BadRequestException('传统付费抽卡功能暂时不可用，请使用抽卡券抽卡');
+    }
+
+    /**
+     * 获取NFC抽卡统计信息
+     */
+    async getDrawStats(nfcUID: string): Promise<DrawStatsDto> {
+        if (!this.validateUID(nfcUID)) {
+            throw new BadRequestException('NFC UID格式无效');
+        }
+
+        try {
+            // 调用合约获取抽卡统计
+            const stats = await this.injectiveService.getDrawStats(nfcUID);
+
+            return {
+                availableDraws: stats.availableDraws || 0,
+                usedDraws: stats.usedDraws || 0,
+                totalDraws: stats.totalDraws || 0,
+                socialBonus: stats.socialBonus || 0
+            };
+        } catch (error) {
+            this.logger.error(`获取抽卡统计失败:`, error.message);
+            throw new BadRequestException(`获取抽卡统计失败: ${error.message}`);
+        }
+    }
+
+    /**
+     * 获取已互动的NFC列表
+     */
+    async getInteractedNFCs(nfcUID: string): Promise<{ interactedNFCs: string[] }> {
+        if (!this.validateUID(nfcUID)) {
+            throw new BadRequestException('NFC UID格式无效');
+        }
+
+        try {
+            // 调用合约获取已互动NFC列表
+            const interactedNFCs = await this.injectiveService.getInteractedNFCs(nfcUID);
+
+            return {
+                interactedNFCs: interactedNFCs || []
+            };
+        } catch (error) {
+            this.logger.error(`获取已互动NFC列表失败:`, error.message);
+            throw new BadRequestException(`获取已互动NFC列表失败: ${error.message}`);
         }
     }
 
@@ -680,174 +899,98 @@ export class NFCService {
 
         const nfcCard = await this.prisma.nFCCard.findUnique({
             where: { uid },
-            include: { user: true }
+            include: {
+                user: {
+                    include: {
+                        catNFTs: {
+                            orderBy: { mintedAt: 'desc' }
+                        }
+                    }
+                }
+            }
         });
 
         if (!nfcCard) {
-            throw new NotFoundException('未找到对应的NFC卡片');
+            throw new NotFoundException('未找到NFC卡片');
         }
 
-        const catNFTs = await this.prisma.catNFT.findMany({
-            where: { userId: nfcCard.user.id },
-            orderBy: { mintedAt: 'desc' }
-        });
-
-        const cats = catNFTs.map(cat => ({
+        const catNFTs = nfcCard.user.catNFTs.map(cat => ({
             tokenId: cat.tokenId,
             name: cat.name,
             rarity: cat.rarity,
             color: cat.color,
             imageUrl: cat.imageUrl,
             metadata: cat.metadata as Record<string, any>,
-            txHash: '', // 这里可以从交易记录中获取
+            txHash: (cat.metadata as any)?.txHash || cat.tokenId, // 使用txHash或tokenId作为fallback
             mintedAt: cat.mintedAt
         }));
 
         return {
-            cats,
-            total: cats.length,
+            cats: catNFTs,
+            total: catNFTs.length,
             page: 1,
             totalPages: 1
         };
     }
 
     /**
-     * 获取用户的域名NFT详情 (包含图片和元数据)
+     * 获取社交统计信息
      */
-    async getUserDomainNFT(uid: string) {
-        const nfcCard = await this.prisma.nFCCard.findUnique({
-            where: { uid },
-            include: { user: true }
-        });
-
-        if (!nfcCard) {
-            throw new NotFoundException('未找到对应的NFC卡片');
-        }
-
-        const user = nfcCard.user;
-        if (!user.domain || !user.domainRegistered) {
-            return null;
-        }
-
-        // 生成域名NFT的图片URL和元数据
-        const imageUrl = this.generateDomainImageUrl(user.domain);
-        const domainMetadata = this.generateDomainMetadata(
-            user.domain,
-            user.createdAt // 使用创建时间作为注册时间
-        );
-
-        return {
-            domain: user.domain,
-            tokenId: user.domainTokenId,
-            imageUrl: imageUrl,
-            metadata: domainMetadata,
-            registeredAt: user.createdAt,
-            isActive: true
-        };
-    }
-
-
-
-    /**
-     * 手动绑定NFC到链上（测试用）
-     */
-    async manualBindNFC(uid: string): Promise<{ success: boolean; message: string; txHash?: string; error?: string }> {
+    async getSocialStats(uid: string): Promise<SocialStatsDto> {
         if (!this.validateUID(uid)) {
             throw new BadRequestException('NFC UID格式无效');
         }
 
-        const nfcCard = await this.prisma.nFCCard.findUnique({
-            where: { uid },
-            include: { user: true }
-        });
+        try {
+            // 获取抽卡统计
+            const drawStats = await this.getDrawStats(uid);
 
-        if (!nfcCard) {
+            // 获取已互动NFC列表
+            const interactedResult = await this.getInteractedNFCs(uid);
+
             return {
-                success: false,
-                message: 'NFC卡片不存在'
+                nfcUID: uid,
+                drawCount: drawStats.usedDraws,
+                interactedCount: interactedResult.interactedNFCs.length,
+                interactedNFCs: interactedResult.interactedNFCs,
+                socialBonus: drawStats.socialBonus
             };
+        } catch (error) {
+            this.logger.error(`获取社交统计失败:`, error.message);
+            throw new BadRequestException(`获取社交统计失败: ${error.message}`);
+        }
+    }
+
+    /**
+     * 检查两个NFC是否已经互动过
+     */
+    async checkInteraction(nfc1: string, nfc2: string): Promise<boolean> {
+        if (!this.validateUID(nfc1) || !this.validateUID(nfc2)) {
+            throw new BadRequestException('NFC UID格式无效');
         }
 
         try {
-            this.logger.log(`开始手动绑定NFC到链上: ${uid} -> ${nfcCard.user.address}`);
-            const bindResult = await this.injectiveService.detectAndBindBlankCard(uid, nfcCard.user.address);
-
-            if (bindResult.success) {
-                this.logger.log(`手动绑定成功: ${uid}, 交易哈希: ${bindResult.txHash}`);
-                return {
-                    success: true,
-                    message: 'NFC手动绑定成功',
-                    txHash: bindResult.txHash
-                };
-            } else {
-                return {
-                    success: false,
-                    message: 'NFC手动绑定失败',
-                    error: bindResult.error
-                };
-            }
+            return await this.injectiveService.hasInteracted(nfc1, nfc2);
         } catch (error) {
-            this.logger.error(`手动绑定NFC失败: ${uid}`, error.message);
-            return {
-                success: false,
-                message: 'NFC手动绑定失败',
-                error: error.message
-            };
+            this.logger.error(`检查NFC互动状态失败:`, error.message);
+            return false;
         }
     }
 
     /**
-     * 生成小猫图片URL
+     * 根据颜色生成猫咪图片URL
      */
     private generateCatImageUrl(color: string): string {
-        // 使用实际的IPFS图片链接
-        const imageMap = {
-            'black': 'https://bafybeieljhlspz52bir4cor4p3ww5zlo7ifyzdf2givip635kxgwpgnhmq.ipfs.w3s.link/black.png',
-            'green': 'https://bafybeifgbuvorq2o6uztzg3ekf2m3lezu2fh65aydttuavs2thy63zauja.ipfs.w3s.link/grow.png',
-            'red': 'https://bafybeiedm7slz2lszetnakzddshedf3oirgy2iqfvykzpx5qxp3kji4xpi.ipfs.w3s.link/red.png',
-            'orange': 'https://bafybeifm2mxuyfdituhty23ejoeojp23mpbyavsufg5hb2vwsxjftfzplu.ipfs.w3s.link/orange.png',
-            'purple': 'https://bafybeibmuw3eypvh4p5k33pquhkxmt7cktuobtjk7cm5fqgz2dl2ewpr24.ipfs.w3s.link/purple.png',
-            'blue': 'https://bafybeibirtf5cu6kacoukvplxneodjrak5dvpbi3pepjatwhjijyl5xca4.ipfs.w3s.link/blue.png',
-            'rainbow': 'https://bafybeibirtf5cu6kacoukvplxneodjrak5dvpbi3pepjatwhjijyl5xca4.ipfs.w3s.link/max.jpg'
+        const colorMapping = {
+            '橙色': 'https://bafybeifm2mxuyfdituhty23ejoeojp23mpbyavsufg5hb2vwsxjftfzplu.ipfs.w3s.link/',
+            '绿色': 'https://bafybeifgbuvorq2o6uztzg3ekf2m3lezu2fh65aydttuavs2thy63zauja.ipfs.w3s.link/',
+            '黑色': 'https://bafybeieljhlspz52bir4cor4p3ww5zlo7ifyzdf2givip635kxgwpgnhmq.ipfs.w3s.link/',
+            '紫色': 'https://bafybeibmuw3eypvh4p5k33pquhkxmt7cktuobtjk7cm5fqgz2dl2ewpr24.ipfs.w3s.link/',
+            '红色': 'https://bafybeiedm7slz2lszetnakzddshedf3oirgy2iqfvykzpx5qxp3kji4xpi.ipfs.w3s.link/',
+            '蓝色': 'https://bafybeibirtf5cu6kacoukvplxneodjrak5dvpbi3pepjatwhjijyl5xca4.ipfs.w3s.link/',
+            '彩虹': 'https://bafybeibirtf5cu6kacoukvplxneodjrak5dvpbi3pepjatwhjijyl5xca4.ipfs.w3s.link/'
         };
 
-        return imageMap[color] || 'https://bafybeieljhlspz52bir4cor4p3ww5zlo7ifyzdf2givip635kxgwpgnhmq.ipfs.w3s.link/black.png';
-    }
-
-    /**
-     * 生成域名NFT图片URL (统一使用固定图片)
-     */
-    private generateDomainImageUrl(domain: string): string {
-        // 所有域名NFT都使用统一的图片
-        return 'https://bafybeih4nkltzoflarix3ghpjpemjyg2vcu2sywi4wku4uthhacs5uoh2a.ipfs.w3s.link/fir.png';
-    }
-
-    /**
-     * 生成域名NFT元数据
-     */
-    private generateDomainMetadata(domain: string, registeredAt: Date): any {
-        return {
-            name: `INJ Domain: ${domain}`,
-            description: `Injective domain name NFT for ${domain}`,
-            image: this.generateDomainImageUrl(domain),
-            attributes: [
-                {
-                    trait_type: "Domain",
-                    value: domain
-                },
-                {
-                    trait_type: "TLD",
-                    value: ".inj"
-                },
-                {
-                    trait_type: "Registered At",
-                    value: registeredAt.toISOString()
-                },
-                {
-                    trait_type: "Type",
-                    value: "Domain NFT"
-                }
-            ]
-        };
+        return colorMapping[color] || colorMapping['黑色']; // 默认返回黑色猫咪URL
     }
 }
