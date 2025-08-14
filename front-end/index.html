@@ -8,10 +8,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="./styles.css">
   <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
-  <script src="app.js" defer></script>
-
 </head>
 
 <body>
@@ -788,7 +786,7 @@
         <div class="private-key-display">
           <p class="private-key-label">您的私钥：</p>
           <div class="private-key-value" id="private-key-value">
-            0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+            <!-- 私钥将在JavaScript中动态生成 -->
           </div>
         </div>
         <p class="private-key-warning">请确保周围无人观察</p>
@@ -840,7 +838,7 @@
 
         <div class="cat-mint-content">
           <div class="cat-preview" id="cat-preview" style="display: none;">
-            <img src="catdemo.png" alt="Cyber Cat" class="cat-image">
+            <img src="catdemo.jpg" alt="Cyber Cat" class="cat-image">
             <div class="cat-mint-success">
               <h3>铸造成功</h3>
               <p>每个人只能铸造一次</p>
@@ -906,6 +904,8 @@
       </div>
     </div>
   </div>
+
+  <script src="./app.js"></script>
 </body>
 
 </html>
