@@ -1,5 +1,9 @@
 # Dependencies
-node_modules/
+/node_modules/
+/dist/
+/out/
+/cache/
+
 
 # Environment variables
 .env
