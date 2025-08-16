@@ -1,0 +1,454 @@
+/* Dashboard页面样式 */
+.dashboard-container {
+  position: relative;
+  z-index: 10;
+  width: 100%;
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* ID卡片样式 */
+.id-card {
+  position: relative;
+  width: 100%;
+  height: 220px;
+  perspective: 1000px;
+  margin-top: 1rem;
+}
+
+.id-card-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transition: transform 0.8s;
+  transform-style: preserve-3d;
+  border-radius: 16px;
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.4);
+}
+
+.id-card.flipped .id-card-inner {
+  transform: rotateY(180deg);
+}
+
+.id-card-front, .id-card-back {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  backface-visibility: hidden;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.id-card-front {
+  background: linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.id-card-back {
+  background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%);
+  transform: rotateY(180deg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.id-card-gradient {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 50%;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.8) 0%, rgba(0, 0, 0, 0) 100%);
+}
+
+.id-card-text {
+  position: relative;
+  padding: 1rem;
+  color: white;
+  z-index: 2;
+}
+
+.id-card-text h3 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0;
+  margin-bottom: 0.25rem;
+}
+
+.id-card-text p {
+  font-size: 0.875rem;
+  margin: 0;
+  opacity: 0.8;
+}
+
+.id-card img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 16px;
+}
+
+.qrcode {
+  width: 150px;
+  height: 150px;
+  background: white;
+  padding: 0.5rem;
+  border-radius: 8px;
+  margin-bottom: 0.5rem;
+}
+
+.address-label {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.6);
+  margin-bottom: 0.25rem;
+}
+
+.address-value {
+  font-size: 0.75rem;
+  color: white;
+  word-break: break-all;
+  text-align: center;
+}
+
+/* 余额模块样式 */
+.balance-section {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.balance-module {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 16px;
+  padding: 1rem;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.balance-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.balance-header p {
+  font-size: 0.875rem;
+  color: rgba(255, 255, 255, 0.7);
+  margin: 0;
+}
+
+.balance-address {
+  display: flex;
+  align-items: center;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+}
+
+.balance-address svg {
+  width: 14px;
+  height: 14px;
+  margin-left: 0.25rem;
+}
+
+.balance-amount {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0.5rem 0 0.25rem;
+}
+
+.balance-usd {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.6);
+  margin: 0;
+}
+
+/* 收藏品部分 */
+.collection-section {
+  margin-top: 1rem;
+}
+
+.collection-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+
+.collection-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+}
+
+.collection-item {
+  position: relative;
+  height: 120px;
+  perspective: 1000px;
+  cursor: pointer;
+}
+
+.collection-item-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transition: transform 0.6s;
+  transform-style: preserve-3d;
+  border-radius: 12px;
+}
+
+.collection-item.flipped .collection-item-inner {
+  transform: rotateY(180deg);
+}
+
+.collection-item-front, .collection-item-back {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  backface-visibility: hidden;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.collection-item-front {
+  background: rgba(255, 255, 255, 0.05);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.collection-item-back {
+  background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+  transform: rotateY(180deg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.collection-item-front img, .collection-item-front svg {
+  width: 60%;
+  height: 60%;
+  object-fit: contain;
+}
+
+.collection-back-content {
+  text-align: center;
+  color: white;
+}
+
+.collection-back-icon {
+  font-size: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.collection-back-text {
+  font-size: 0.75rem;
+}
+
+/* 动画背景样式 */
+.animated-background {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  z-index: 1;
+}
+
+.blur-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(60px);
+  opacity: 0.3;
+}
+
+.orb1 {
+  top: 10%;
+  left: 10%;
+  width: 300px;
+  height: 300px;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.8) 0%, rgba(59, 130, 246, 0) 70%);
+  animation: float 20s infinite alternate ease-in-out;
+}
+
+.orb2 {
+  bottom: 10%;
+  right: 10%;
+  width: 250px;
+  height: 250px;
+  background: radial-gradient(circle, rgba(139, 92, 246, 0.8) 0%, rgba(139, 92, 246, 0) 70%);
+  animation: float 15s infinite alternate-reverse ease-in-out;
+}
+
+.orb3 {
+  top: 50%;
+  left: 50%;
+  width: 200px;
+  height: 200px;
+  background: radial-gradient(circle, rgba(236, 72, 153, 0.6) 0%, rgba(236, 72, 153, 0) 70%);
+  animation: float 25s infinite alternate ease-in-out;
+}
+
+.orb4, .orb5, .orb6, .orb7 {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(40px);
+  opacity: 0.2;
+  width: 150px;
+  height: 150px;
+}
+
+.orb4 {
+  top: 20%;
+  right: 30%;
+  background: radial-gradient(circle, rgba(16, 185, 129, 0.6) 0%, rgba(16, 185, 129, 0) 70%);
+  animation: float 18s infinite alternate ease-in-out;
+}
+
+.orb5 {
+  bottom: 30%;
+  left: 20%;
+  background: radial-gradient(circle, rgba(245, 158, 11, 0.6) 0%, rgba(245, 158, 11, 0) 70%);
+  animation: float 22s infinite alternate-reverse ease-in-out;
+}
+
+.particle {
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  background-color: rgba(255, 255, 255, 0.5);
+  border-radius: 50%;
+}
+
+.particle:nth-child(1) {
+  top: 20%;
+  left: 20%;
+  animation: particle-float 30s infinite linear;
+}
+
+.particle:nth-child(2) {
+  top: 70%;
+  left: 60%;
+  animation: particle-float 25s infinite linear reverse;
+}
+
+.particle:nth-child(3) {
+  top: 40%;
+  left: 80%;
+  animation: particle-float 35s infinite linear;
+}
+
+.geo-shape {
+  position: absolute;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  opacity: 0.3;
+}
+
+.geo-shape:nth-child(1) {
+  top: 10%;
+  left: 30%;
+  width: 100px;
+  height: 100px;
+  border-radius: 30%;
+  transform: rotate(45deg);
+  animation: rotate 30s infinite linear;
+}
+
+.geo-shape:nth-child(2) {
+  bottom: 20%;
+  right: 20%;
+  width: 80px;
+  height: 80px;
+  border-radius: 4px;
+  transform: rotate(20deg);
+  animation: rotate 25s infinite linear reverse;
+}
+
+.grid-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image: linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+                    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+/* 动画 */
+@keyframes float {
+  0% {
+    transform: translate(0, 0);
+  }
+  100% {
+    transform: translate(20px, 20px);
+  }
+}
+
+@keyframes particle-float {
+  0% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(100px, 50px);
+  }
+  100% {
+    transform: translate(0, 0);
+  }
+}
+
+@keyframes rotate {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* Powered by 样式 */
+.powered-by-container {
+  position: fixed;
+  bottom: 70px;
+  left: 0;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.5rem;
+  z-index: 10;
+}
+
+.powered-by-text {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.powered-by-image {
+  height: 20px;
+  opacity: 0.7;
+}
+
+/* 响应式调整 */
+@media (max-width: 480px) {
+  .balance-section {
+    grid-template-columns: 1fr;
+  }
+  
+  .collection-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
