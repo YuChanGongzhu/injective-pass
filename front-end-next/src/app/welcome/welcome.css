@@ -1,0 +1,125 @@
+/* 网格动画效果 */
+.grid-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image:
+    linear-gradient(rgba(76, 61, 255, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(76, 61, 255, 0.08) 1px, transparent 1px);
+  background-size: 120px 120px;
+  animation: gridMove 50s infinite linear;
+  opacity: 0.95;
+  z-index: 1;
+  pointer-events: none;
+}
+
+@keyframes gridMove {
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+
+  50% {
+    transform: translate(60px, 60px) rotate(0.5deg);
+  }
+
+  100% {
+    transform: translate(120px, 120px) rotate(0deg);
+  }
+}
+
+/* 卡片翻转动画 */
+.pass-card-inner {
+  transition: transform 0.8s;
+  transform-style: preserve-3d;
+}
+
+.auto-flip .pass-card-inner {
+  transform: rotateY(180deg);
+}
+
+/* 徽章闪光效果 */
+@keyframes badgeShimmer {
+  0% {
+    left: -100%;
+  }
+  100% {
+    left: 100%;
+  }
+}
+
+.animate-badge-shimmer {
+  animation: badgeShimmer 4s infinite;
+}
+
+@keyframes badgeBreath {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 4px 16px rgba(239, 68, 68, 0.2);
+  }
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 6px 24px rgba(239, 68, 68, 0.3);
+  }
+}
+
+.animate-badge-breath {
+  animation: badgeBreath 3s infinite ease-in-out;
+}
+
+/* 卡片浮动动画 */
+@keyframes cardFloat {
+  0%, 100% {
+    transform: scale(1.25) translateY(0);
+  }
+  50% {
+    transform: scale(1.25) translateY(-10px);
+  }
+}
+
+.animate-card-float {
+  animation: cardFloat 8s infinite ease-in-out;
+}
+
+/* 背景脉冲动画 */
+@keyframes backgroundPulse {
+  0%, 100% {
+    opacity: 0.5;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: translate(-50%, -50%) scale(1.2);
+  }
+}
+
+.animate-background-pulse {
+  animation: backgroundPulse 8s infinite ease-in-out;
+}
+
+/* 按钮悬停效果 */
+button.group:hover span.absolute {
+  left: 100%;
+}
+
+button.group:hover svg {
+  transform: translateX(4px);
+}
+
+/* 3D 变换和背面可见性 */
+.backface-hidden {
+  backface-visibility: hidden;
+}
+
+.transform-style-3d {
+  transform-style: preserve-3d;
+}
+
+.perspective-1000 {
+  perspective: 1000px;
+}
+
+.rotate-y-180 {
+  transform: rotateY(180deg);
+}
