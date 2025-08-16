@@ -49,7 +49,7 @@ module.exports = {
         gridMove: {
           '0%': { transform: 'translate(0, 0) rotate(0deg)' },
           '50%': { transform: 'translate(60px, 60px) rotate(0.5deg)' },
-          '100%': { transform: 'translate(0, 0) rotate(0deg)' },
+          '100%': { transform: 'translate(120px, 120px) rotate(0deg)' },
         },
         badgeBreath: {
           '0%, 100%': { 

@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation'; 
 import Image from 'next/image';
+import './welcome.css';
 
 export default function Welcome() {
   const router = useRouter();
@@ -26,7 +27,7 @@ export default function Welcome() {
       }}>
         {/* 背景特效 */}
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-screen h-screen bg-gradient-radial from-indigo-500/15 to-transparent to-70% z-[1] pointer-events-none animate-background-pulse"></div>
-        <div className="absolute top-0 left-0 w-full h-full bg-grid-pattern bg-[length:120px_120px] opacity-95 z-[1] pointer-events-none animate-grid-move"></div>
+        <div className="grid-overlay"></div>
         
         {/* 语言切换按钮 */}
         <button 
@@ -83,7 +84,7 @@ export default function Welcome() {
             {/* 按钮 */}
             <button 
               onClick={handleCreatePass}
-              className="group flex items-center gap-3 bg-gradient-to-r from-indigo-500 to-indigo-400 text-white border-none rounded-2xl py-5 px-10 text-xl font-bold cursor-pointer transition-all duration-300 shadow-lg shadow-indigo-500/30 relative overflow-hidden hover:translate-y-[-3px] hover:shadow-xl hover:shadow-indigo-500/40"
+              className="group relative overflow-hidden bg-gradient-to-r from-indigo-500 to-teal-500 text-white py-3 px-6 rounded-full text-lg font-semibold tracking-wider shadow-lg shadow-indigo-500/20 flex items-center gap-2 transition-all duration-300 hover:shadow-xl hover:shadow-indigo-500/30 hover:scale-105 lg:mx-0 mx-auto"
             >
               <span className="absolute top-0 -left-full w-full h-full bg-gradient-to-r from-transparent via-white/20 to-transparent transition-all duration-500 group-hover:left-full"></span>
               <span>{language === 'zh' ? '开始创建' : 'Start Creating'}</span>
@@ -95,11 +96,11 @@ export default function Welcome() {
 
           {/* 右侧卡片预览 */}
           <div className="flex justify-center items-center lg:-ml-12 lg:mt-20">
-            <div className="relative perspective-[1000px]">
-              <div className={`w-[350px] h-[225px] bg-gradient-to-br from-white/80 to-white/95 border-2 border-indigo-500/8 rounded-2xl backdrop-blur-xl shadow-2xl shadow-indigo-500/15 animate-card-float relative overflow-hidden scale-125 perspective-[1000px] ${isFlipped ? 'auto-flip' : ''}`}>
-                <div className="w-full h-full transition-transform duration-800 transform-style-3d relative">
+            <div className="relative perspective-1000">
+              <div className={`w-[350px] h-[225px] bg-gradient-to-br from-white/80 to-white/95 border-2 border-indigo-500/8 rounded-2xl backdrop-blur-xl shadow-2xl shadow-indigo-500/15 animate-card-float relative overflow-hidden scale-125 ${isFlipped ? 'auto-flip' : ''}`}>
+                <div className="w-full h-full transition-transform duration-700 transform-style-3d relative pass-card-inner">
                   {/* 卡片正面 */}
-                  <div className="absolute w-full h-full backface-hidden top-0 left-0 rounded-2xl overflow-hidden box-border bg-gradient-to-br from-white/80 to-white/95 p-7.5">
+                  <div className="absolute w-full h-full backface-hidden top-0 left-0 rounded-2xl overflow-hidden box-border bg-gradient-to-br from-white/80 to-white/95 p-7">
                     <div className="pass-header flex justify-between items-center mb-6">
                       <div className="text-xl font-bold bg-gradient-to-r from-indigo-500 to-teal-500 bg-clip-text text-transparent">Injective</div>
                       <div className="text-xs font-semibold text-teal-500 bg-indigo-500/5 py-1 px-2 rounded-full border border-indigo-500/10">On-Chain</div>
