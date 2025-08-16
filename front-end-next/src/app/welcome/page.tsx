@@ -18,7 +18,7 @@ export default function Welcome() {
   }, []);
 
   const handleCreatePass = () => {
-    router.push('/nfc-scan');
+    router.push('/wallet-screen');
   };
 
   return (
