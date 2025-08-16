@@ -4266,7 +4266,7 @@
         <div class="private-key-display">
           <p class="private-key-label">您的私钥：</p>
           <div class="private-key-value" id="private-key-value">
-            <!-- 私钥将在JavaScript中动态生成 -->
+            0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
           </div>
         </div>
         <p class="private-key-warning">请确保周围无人观察</p>
@@ -4971,43 +4971,6 @@
       }
     }
 
-    // 生成随机EVM地址
-    function generateRandomAddress() {
-      const chars = '0123456789abcdef';
-      let address = '0x';
-      for (let i = 0; i < 40; i++) {
-        address += chars[Math.floor(Math.random() * chars.length)];
-      }
-      return address;
-    }
-
-    // 生成随机私钥
-    function generateRandomPrivateKey() {
-      const chars = '0123456789abcdef';
-      let privateKey = '0x';
-      for (let i = 0; i < 64; i++) {
-        privateKey += chars[Math.floor(Math.random() * chars.length)];
-      }
-      return privateKey;
-    }
-
-    // 生成随机用户数据
-    function generateRandomUserData() {
-      const publicKey = generateRandomAddress();
-      const privateKey = generateRandomPrivateKey();
-      
-      return {
-        wallet: {
-          publicKey: publicKey,
-          privateKey: privateKey
-        },
-        nft: {
-          name: '', // 域名将由用户输入决定，这里先留空
-          imageUrl: '', // 图片URL也将在铸造时设置
-        }
-      };
-    }
-
     const mockApi = {
       readNfcUid: async () => {
         // 如果已经有NFC UID，直接返回
@@ -5021,8 +4984,8 @@
         );
       },
       generateWallet: () => ({
-        publicKey: generateRandomAddress(), // 现在生成EVM地址
-        privateKey: generateRandomPrivateKey(),
+        publicKey: 'inj1' + Math.random().toString(36).substr(2, 38),
+        privateKey: '0x' + Array(64).join().replace(/(.|$)/g, () => (Math.random() * 16 | 0).toString(16)),
       }),
       checkDomainAvailability: async (domain) => {
         await new Promise(resolve => setTimeout(resolve, 500));
@@ -5036,8 +4999,8 @@
         };
       },
       getBalances: async (address) => ({
-        inj: '0.0000',
-        usdt: '0.00',
+        inj: (Math.random() * 100).toFixed(4),
+        usdt: (Math.random() * 5000).toFixed(2),
       }),
     };
 
@@ -5245,17 +5208,6 @@
 
         // Open InjScan in new tab
         window.open(`https://injscan.com/account/${address}`, '_blank');
-      } else if (appState.userData && appState.userData.wallet) {
-        // 如果没有连接的钱包，使用用户数据中的EVM地址
-        let address = appState.userData.wallet.publicKey;
-        
-        // Convert EVM address to Injective format
-        if (address.startsWith('0x')) {
-          address = 'inj1' + address.slice(2);
-        }
-
-        // Open InjScan in new tab
-        window.open(`https://injscan.com/account/${address}`, '_blank');
       }
     });
 
@@ -5427,22 +5379,14 @@
       mintingStepMinting.style.display = 'block';
 
       mintingStatusEl.textContent = t('mint.generating');
-      
-      // 每次访问时生成随机的用户数据
-      const randomUserData = generateRandomUserData();
-      const wallet = randomUserData.wallet;
+      const wallet = mockApi.generateWallet();
 
       mintingStatusEl.textContent = '正在铸造您的Injective身份...';
       const fullDomain = 'advx-' + domainInput.value;
-      
-      // 使用用户输入的域名，不随机
-      randomUserData.nft.name = fullDomain + '.inj';
-      randomUserData.nft.imageUrl = `https://placehold.co/400x600/FFFFFF/1F2937?text=${fullDomain}.inj`;
-      
       const nft = await mockApi.mintNft(fullDomain, appState.nfcUid, wallet.publicKey);
 
       mintingStatusEl.innerHTML = '<span class="emoji-fade-in">完成</span>';
-      appState.userData = randomUserData;
+      appState.userData = { wallet, nft };
 
       setTimeout(() => {
         populateDashboard();
@@ -5464,10 +5408,7 @@
       const { wallet, nft } = appState.userData;
       dashboardNftImage.src = nft.imageUrl;
       dashboardNftName.textContent = nft.name;
-      
-      // 确保Injective Address下面显示的公钥地址与资产旁边显示的公钥地址一致
-      const displayAddress = `${wallet.publicKey.slice(0, 6)}...${wallet.publicKey.slice(-4)}`;
-      dashboardAddress.textContent = displayAddress;
+      dashboardAddress.textContent = `${wallet.publicKey.slice(0, 6)}...${wallet.publicKey.slice(-4)}`;
 
       const balances = await mockApi.getBalances(wallet.publicKey);
       dashboardInjBalance.textContent = balances.inj;
@@ -5489,7 +5430,6 @@
           colorLight: isDark ? '#1F2937' : '#FFFFFF',
           correctLevel: QRCode.CorrectLevel.H
         });
-        // 确保Injective Address下面显示完整的公钥地址
         addressBack.textContent = wallet.publicKey;
         idCard.onclick = function () {
           idCard.classList.toggle('flipped');
@@ -5498,9 +5438,7 @@
     }
 
     copyAddressBtn.addEventListener('click', () => {
-      // 复制EVM地址
-      const addressToCopy = appState.userData.wallet.publicKey;
-      navigator.clipboard.writeText(addressToCopy);
+      navigator.clipboard.writeText(appState.userData.wallet.publicKey);
       copyIcon.style.display = 'none';
       checkIcon.style.display = 'block';
       setTimeout(() => {
@@ -5522,15 +5460,12 @@
         walletAddressDisplay.style.display = 'block';
         walletAddressDisplay.textContent = savedAddress.slice(0, 6) + '...' + savedAddress.slice(-4);
 
-        // If we have a connected wallet, generate random user data and show dashboard
-        if (!appState.userData) {
-          // 生成随机的用户数据
-          appState.userData = generateRandomUserData();
-          // 为已连接钱包的用户设置默认域名
-          appState.userData.nft.name = 'advx-default.inj';
-          appState.userData.nft.imageUrl = 'https://placehold.co/400x600/FFFFFF/1F2937?text=advx-default.inj';
+        // If we have a connected wallet, show it on dashboard
+        if (appState.userData) {
+          navigateTo('dashboard-screen');
+        } else {
+          navigateTo('minting-screen');
         }
-        navigateTo('dashboard-screen');
       }
     }
 
@@ -5539,7 +5474,7 @@
     const sunIcon = themeToggleBtn.querySelector('.sun-icon');
     const moonIcon = themeToggleBtn.querySelector('.moon-icon');
 
-    let currentTheme = localStorage.getItem('theme') || 'dark'; // 默认已经是dark
+    let currentTheme = localStorage.getItem('theme') || 'dark';
 
     function setTheme(theme) {
       document.documentElement.setAttribute('data-theme', theme);
@@ -5699,12 +5634,6 @@
     // Show private key modal
     function showPrivateKeyModal() {
       const modal = document.getElementById('private-key-modal');
-      const privateKeyValue = document.getElementById('private-key-value');
-      
-      // 每次显示时生成随机的私钥
-      const randomPrivateKey = generateRandomPrivateKey();
-      privateKeyValue.textContent = randomPrivateKey;
-      
       modal.style.display = 'flex';
     }
 

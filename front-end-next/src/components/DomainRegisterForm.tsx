@@ -12,6 +12,34 @@ export default function DomainRegisterForm({ onSuccess, className = '' }: Domain
     const [prefix, setPrefix] = useState('');
     const [loading, setLoading] = useState(false);
     const [msg, setMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+    const [isChecking, setIsChecking] = useState(false);
+    const [isDomainAvailable, setIsDomainAvailable] = useState<boolean | null>(null);
+
+    // 检查域名可用性
+    const checkDomainAvailability = async () => {
+        if (!prefix.trim()) return;
+        
+        setIsChecking(true);
+        setMsg(null);
+        setIsDomainAvailable(null);
+        
+        try {
+            const result = await NfcApi.domainCheck(prefix.trim());
+            setIsDomainAvailable(result.available);
+            
+            if (result.available) {
+                setMsg({ text: `域名 advx-${prefix.trim()}.inj 可用`, type: 'success' });
+            } else {
+                setMsg({ text: `域名 advx-${prefix.trim()}.inj 已被注册`, type: 'error' });
+            }
+        } catch (err: any) {
+            console.error('检查域名失败:', err);
+            setMsg({ text: err?.message || '检查域名失败，请重试', type: 'error' });
+            setIsDomainAvailable(false);
+        } finally {
+            setIsChecking(false);
+        }
+    };
 
     const submit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -55,16 +83,32 @@ export default function DomainRegisterForm({ onSuccess, className = '' }: Domain
                     <input 
                         className="flex-1 bg-transparent border-none px-3 py-2 text-white placeholder-white/30 focus:outline-none" 
                         value={prefix} 
-                        onChange={(e) => setPrefix(e.target.value)} 
+                        onChange={(e) => {
+                            setPrefix(e.target.value);
+                            setIsDomainAvailable(null);
+                        }} 
                         placeholder="alice" 
                         required 
                     />
                     <span className="px-2 py-2 bg-white/10 text-white/70 text-sm">.inj</span>
                 </div>
             </div>
+            
+            {/* 域名检查按钮 */}
             <button 
-                disabled={loading} 
-                className="w-full bg-gradient-to-r from-blue-500 to-purple-600 text-white px-4 py-2 rounded-lg font-medium transition-all hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                type="button"
+                onClick={checkDomainAvailability}
+                disabled={isChecking || !prefix.trim()} 
+                className="w-full bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-lg font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+                {isChecking ? '检查中...' : '检查域名可用性'}
+            </button>
+            
+            {/* 注册按钮 - 只有在域名可用或未检查时才启用 */}
+            <button 
+                type="submit"
+                disabled={loading || (isDomainAvailable === false)} 
+                className={`w-full ${isDomainAvailable === true ? 'bg-gradient-to-r from-blue-500 to-purple-600' : 'bg-gradient-to-r from-blue-500/70 to-purple-600/70'} text-white px-4 py-2 rounded-lg font-medium transition-all hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed`}
             >
                 {loading ? '注册中...' : '注册域名'}
             </button>
