@@ -2,12 +2,50 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
+import { isIOS, isAndroid, isMac, isPasskeySupported } from '@/lib/deviceDetection';
+import { getPasskeySignature, hasExistingPasskey } from '@/lib/passkey';
 import './wallet.css';
 
 export default function WalletScreen() {
   const router = useRouter();
   const [selectedWallet, setSelectedWallet] = useState<string | null>(null);
   const [language, setLanguage] = useState('zh');
+
+  // iOS和Mac设备检测和passkey处理
+  useEffect(() => {
+    const handlePasskeyDevices = async () => {
+      if ((isIOS() || isMac()) && await isPasskeySupported()) {
+        try {
+          if (hasExistingPasskey()) {
+            // 已有passkey，直接登录
+            const result = await getPasskeySignature();
+            if (result.success) {
+              console.log('Passkey登录成功:', result.username);
+              // 直接跳转到铸造页面
+              router.push('/minting');
+              return;
+            } else {
+              console.error('Passkey登录失败:', result.error);
+              // 如果登录失败，跳转到创建页面
+              router.push('/passkey-create');
+              return;
+            }
+          } else {
+            // 没有passkey，跳转到创建页面
+            router.push('/passkey-create');
+            return;
+          }
+        } catch (error) {
+          console.error('Passkey处理失败:', error);
+          // 出错时跳转到创建页面
+          router.push('/passkey-create');
+          return;
+        }
+      }
+    };
+
+    handlePasskeyDevices();
+  }, [router]);
 
   // 处理钱包选择
   const handleWalletSelect = (wallet: string) => {
@@ -33,7 +71,12 @@ export default function WalletScreen() {
   // 处理继续按钮
   const handleContinue = () => {
     if (selectedWallet) {
-      router.push('/nfc-scan');
+      // 根据设备类型决定跳转
+      if (isAndroid()) {
+        router.push('/nfc-scan');
+      } else {
+        router.push('/nfc-scan');
+      }
     }
   };
 
