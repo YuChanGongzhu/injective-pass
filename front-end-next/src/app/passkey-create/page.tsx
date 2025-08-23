@@ -118,6 +118,7 @@ export default function PasskeyCreatePage() {
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 disabled={status === 'creating'}
+                suppressHydrationWarning={true}
               />
               <small>{language === 'zh' ? '用户名将用于识别您的通行证' : 'Username will be used to identify your passkey'}</small>
             </div>

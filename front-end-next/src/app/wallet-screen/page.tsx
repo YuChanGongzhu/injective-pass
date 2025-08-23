@@ -14,9 +14,27 @@ export default function WalletScreen() {
   // iOS和Mac设备检测和passkey处理
   useEffect(() => {
     const handlePasskeyDevices = async () => {
-      if ((isIOS() || isMac()) && await isPasskeySupported()) {
+      // 确保在客户端执行
+      if (typeof window === 'undefined') return;
+      
+      // 添加调试日志
+      console.log('设备检测开始...');
+      console.log('User Agent:', navigator.userAgent);
+      console.log('Platform:', navigator.platform);
+      console.log('isIOS():', isIOS());
+      console.log('isMac():', isMac());
+      
+      const iosDevice = isIOS();
+      const macDevice = isMac();
+      const passkeySupported = await isPasskeySupported();
+      
+      console.log('设备检测结果:', { iosDevice, macDevice, passkeySupported });
+      
+      if ((iosDevice || macDevice) && passkeySupported) {
+        console.log('触发passkey流程...');
         try {
           if (hasExistingPasskey()) {
+            console.log('检测到现有passkey，尝试登录...');
             // 已有passkey，直接登录
             const result = await getPasskeySignature();
             if (result.success) {
@@ -31,6 +49,7 @@ export default function WalletScreen() {
               return;
             }
           } else {
+            console.log('未检测到现有passkey，跳转到创建页面...');
             // 没有passkey，跳转到创建页面
             router.push('/passkey-create');
             return;
@@ -41,10 +60,17 @@ export default function WalletScreen() {
           router.push('/passkey-create');
           return;
         }
+      } else {
+        console.log('不满足passkey条件，继续显示钱包选择界面');
       }
     };
 
-    handlePasskeyDevices();
+    // 延迟执行，确保DOM完全加载
+    const timer = setTimeout(() => {
+      handlePasskeyDevices();
+    }, 100);
+
+    return () => clearTimeout(timer);
   }, [router]);
 
   // 处理钱包选择
